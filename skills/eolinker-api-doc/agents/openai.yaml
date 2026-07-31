@@ -1,0 +1,4 @@
+interface:
+  display_name: "Eolinker API Doc"
+  short_description: "Extract Eolinker share links for AI"
+  default_prompt: "Use $eolinker-api-doc to extract AI-readable API information from this Eolinker share URL."
