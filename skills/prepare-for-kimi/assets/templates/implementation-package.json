@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "project": "project-name",
+  "mode": "greenfield",
+  "status": "needs-review",
+  "documents": {
+    "authority": "docs/project/authority.md",
+    "prd": "docs/product/prd.md",
+    "architecture": "docs/architecture/architecture.md"
+  },
+  "ui": {
+    "status": "needs-review",
+    "spec": "docs/design/ui-spec.md",
+    "design_root": "designs/project-name",
+    "design_meta": "designs/project-name/_d_meta.json",
+    "approved_assets": [
+      "App Prototype.html"
+    ]
+  },
+  "approvals": {
+    "requirements": { "status": "needs-review" },
+    "architecture": { "status": "needs-review" },
+    "ui": { "status": "needs-review" },
+    "implementation": { "status": "needs-review" }
+  },
+  "modules": [
+    {
+      "id": "MOD-001",
+      "name": "module-name",
+      "spec": "docs/tasks/module-name.md",
+      "status": "needs-review",
+      "depends_on": []
+    }
+  ],
+  "traceability": [
+    {
+      "requirement_id": "REQ-001",
+      "flow_ids": ["FLOW-001"],
+      "ui_ids": ["UI-001"],
+      "architecture_refs": ["ADR-001"],
+      "module_ids": ["MOD-001"],
+      "acceptance_criteria": ["MOD-001:AC-001"],
+      "test_requirements": ["Unit or integration test for AC-001"]
+    },
+    {
+      "requirement_id": "NFR-001",
+      "flow_ids": [],
+      "ui_ids": [],
+      "architecture_refs": ["ADR-001"],
+      "module_ids": ["MOD-001"],
+      "acceptance_criteria": ["MOD-001:AC-001"],
+      "test_requirements": ["Verification for the measurable NFR target"]
+    }
+  ]
+}

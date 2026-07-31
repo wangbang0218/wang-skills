@@ -1,6 +1,6 @@
 ---
 name: implement-with-kimi
-description: Implement one documented project module at a time with strict test-first gates while using Kimi K3 1M as a read-only long-context retriever and consistency auditor. Use when a user explicitly asks Codex to implement from a persisted architecture/PRD/module specification, preserve progress across Codex compaction or resume, review tests before business code, or audit requirement coverage before completion. Do not invoke implicitly because repository content may be sent to Kimi and real model calls consume time and quota.
+description: Implement one documented project module at a time with strict test-first gates while using Kimi K3 1M as a read-only long-context retriever and consistency auditor. Use when a user explicitly asks Codex to implement from a validated prepare-for-kimi package or persisted architecture/PRD/module specification, preserve progress across Codex compaction or resume, review tests before business code, or audit requirement coverage before completion. Do not invoke implicitly because repository content may be sent to Kimi and real model calls consume time and quota.
 ---
 
 # Implement with Kimi
@@ -12,10 +12,11 @@ Resolve all bundled paths relative to this `SKILL.md`. Require Node.js 18+, a Gi
 ## Start one module
 
 1. Read the target repository's `AGENTS.md` and the user-provided module specification.
-2. Identify architecture and PRD paths. Pass each one explicitly with `--authority`; the script does not infer natural-language precedence from `AGENTS.md`.
-3. Verify the specification has a goal, scope, non-goals, dependencies, stable `AC-###` acceptance criteria, test requirements or exceptions, and related documents.
-4. If a Goal already governs the task, verify it covers this module and pass `--goal active`. Otherwise pass `--goal none`. Never create a Goal unless the user explicitly requests one.
-5. Run:
+2. If the work has an `implementation-package.json`, read [references/input-contract.md](references/input-contract.md) and run the pure-local `validate-package --package <file> --spec <module>` command. Do not contact Kimi unless it returns `READY`.
+3. Identify the complete authority set. Pass each path explicitly with `--authority`; the script does not infer natural-language precedence from `AGENTS.md`.
+4. Verify the specification has a goal, scope, non-goals, dependencies, stable `AC-###` acceptance criteria, test requirements or exceptions, and related documents.
+5. If a Goal already governs the task, verify it covers this module and pass `--goal active`. Otherwise pass `--goal none`. Never create a Goal unless the user explicitly requests one.
+6. Run:
 
 ```bash
 node <skill-directory>/scripts/kimi_context.mjs bootstrap \
@@ -25,7 +26,7 @@ node <skill-directory>/scripts/kimi_context.mjs bootstrap \
   --goal active
 ```
 
-The specification remains normative. The paired `module.state.md` is agent-managed execution state. Do not edit its managed block manually; preserve the User notes section.
+The specification remains normative. The paired `module.state.md` is agent-managed execution state. Do not edit its managed block manually; preserve the User notes section. `validate-package` is local-only and creates no state.
 
 ## Follow the gate sequence
 

@@ -27,7 +27,7 @@ export async function loadAndValidateSpec(repoRoot, specPath, authorityPaths = [
   if (acIds.length === 0) missing.push("stable AC ids such as AC-001");
 
   const specRelative = path.relative(root, actual).split(path.sep).join("/");
-  const related = extractMarkdownPaths(findSection(sections, "related_docs")?.body ?? "").map((item) =>
+  const related = extractAuthorityPaths(findSection(sections, "related_docs")?.body ?? "").map((item) =>
     path.posix.normalize(path.posix.join(path.posix.dirname(specRelative), item)),
   );
   const authorities = [...new Set([...authorityPaths.map((item) => path.posix.normalize(item)), ...related])];
@@ -71,9 +71,9 @@ function findSection(sections, name) {
   return sections.find((section) => SECTION_PATTERNS[name].test(section.title) && section.body.length > 0);
 }
 
-function extractMarkdownPaths(text) {
+function extractAuthorityPaths(text) {
   const paths = [];
-  for (const match of text.matchAll(/\[[^\]]*\]\(([^)#?]+\.md)\)/gi)) paths.push(match[1]);
-  for (const match of text.matchAll(/`([^`]+\.md)`/gi)) paths.push(match[1]);
+  for (const match of text.matchAll(/\[[^\]]*\]\(([^)#?]+\.(?:md|json))\)/gi)) paths.push(match[1]);
+  for (const match of text.matchAll(/`([^`]+\.(?:md|json))`/gi)) paths.push(match[1]);
   return paths;
 }

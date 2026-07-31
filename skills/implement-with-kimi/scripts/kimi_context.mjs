@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { sha256File } from "./lib/evidence.mjs";
+import { validateImplementationPackage } from "./lib/document-package.mjs";
 import { HOOK_STATUS_MESSAGE, mergeHookConfig, removeHookConfig } from "./lib/hook-config.mjs";
 import { preflightKimi } from "./lib/preflight.mjs";
 import {
@@ -45,6 +46,7 @@ main().catch((error) => {
     schema_version: 1,
     status: error.kind === "CANCELLED" ? "CANCELLED" : "ERROR",
     error: { kind: error.kind ?? "GENERAL", message: error.message },
+    ...(error.issues ? { issues: error.issues } : {}),
   };
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   process.exitCode = exitCodeFor(error);
@@ -61,6 +63,13 @@ async function main() {
   if (parsed.command === "setup-hook") return setupHook(repoRoot);
   if (parsed.command === "remove-hook") return removeHook(repoRoot);
   if (parsed.command === "inspect") return inspectFinding(repoRoot, parsed.options);
+  if (parsed.command === "validate-package") {
+    const packagePath = requireOption(parsed.options, "package");
+    const result = await validateImplementationPackage(repoRoot, packagePath, {
+      specPath: parsed.options.spec ? requireOption(parsed.options, "spec") : null,
+    });
+    return emit(result);
+  }
 
   const specPath = requireOption(parsed.options, "spec");
   const spec = await loadAndValidateSpec(repoRoot, specPath, arrayOption(parsed.options, "authority"));
@@ -605,7 +614,7 @@ function parseArguments(argv) {
 }
 
 function exitCodeFor(error) {
-  if (["WORKFLOW", "SPEC_INVALID", "BLOCKED", "USAGE"].includes(error.kind)) return EXIT.BLOCKED;
+  if (["WORKFLOW", "SPEC_INVALID", "PACKAGE_INVALID", "BLOCKED", "USAGE"].includes(error.kind)) return EXIT.BLOCKED;
   if (error.kind === "CONFIG") return EXIT.CONFIG;
   if (["SCHEMA", "PROTOCOL", "STALE", "POLICY_VIOLATION", "EVIDENCE"].includes(error.kind)) return EXIT.VALIDATION;
   if (/idle timeout/i.test(error.message) || ["RETRY_EXHAUSTED", "CONTEXT_COMPACTED", "CONTEXT_OVERSIZE"].includes(error.kind)) return EXIT.TRANSIENT;
@@ -623,6 +632,7 @@ function usage() {
   return `implement-with-kimi
 
 Usage:
+  kimi_context.mjs validate-package --package <file> [--spec <module.md>]
   kimi_context.mjs bootstrap --spec <file> [--authority <file> ...] [--goal active|none]
   kimi_context.mjs review-tests|rehydrate|audit --spec <file> [--authority <file> ...]
   kimi_context.mjs query --spec <file> --question <text> [--authority <file> ...]

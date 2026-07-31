@@ -14,9 +14,9 @@ Use this precedence:
 
 1. Latest user-confirmed instruction after it has been persisted into project documentation.
 2. Precedence explicitly declared by the project, including `AGENTS.md`.
-3. Current module specification and declared architecture/PRD documents.
+3. Current module specification and declared package, architecture, PRD, and applicable UI documents.
 
-If the project does not declare architecture-versus-PRD precedence, report a conflict instead of choosing one. Kimi may suggest a correction but must not invent missing requirements.
+If the project does not declare domain ownership or architecture-versus-PRD precedence, report a conflict instead of choosing one. Kimi may suggest a correction but must not invent missing requirements. A version 1 implementation package uses `authority.md` to declare ownership and `implementation-package.json` to index the approved paths; see [input-contract.md](input-contract.md).
 
 The module specification must be Markdown and contain non-empty sections for goal, scope, non-goals, dependencies, acceptance criteria, tests or exceptions, and related documents. Give every acceptance criterion a stable id such as `AC-001`. Pair the file with `<name>.state.md` in the same directory.
 

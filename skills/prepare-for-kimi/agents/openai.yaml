@@ -1,0 +1,6 @@
+interface:
+  display_name: "Prepare for Kimi"
+  short_description: "Plan approved projects for Kimi implementation"
+  default_prompt: "Use $prepare-for-kimi to refine this project, create an approved implementation document package, and prepare the handoff to $implement-with-kimi."
+policy:
+  allow_implicit_invocation: false

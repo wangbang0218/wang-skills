@@ -28,16 +28,18 @@ Map every test to an AC id.
 
 ## Related architecture and PRD
 - [Architecture](architecture.md)
+- [Implementation package](implementation-package.json)
 `;
 
 test("spec validation requires stable AC ids and mandatory sections", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "iwk-spec-"));
   await writeFile(path.join(root, "spec.md"), validSpec, "utf8");
   await writeFile(path.join(root, "architecture.md"), "# Architecture\n", "utf8");
+  await writeFile(path.join(root, "implementation-package.json"), "{}\n", "utf8");
 
   const spec = await loadAndValidateSpec(root, "spec.md");
   assert.deepEqual(spec.ac_ids, ["AC-001"]);
-  assert.deepEqual(spec.authority_paths, ["architecture.md"]);
+  assert.deepEqual(spec.authority_paths, ["architecture.md", "implementation-package.json"]);
 });
 
 test("spec validation blocks incomplete specifications", async () => {

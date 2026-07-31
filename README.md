@@ -6,11 +6,11 @@
 
 需要本机已安装 Node.js 和 `npx`。
 
-安装指定 Skill：
+安装指定 Skill，例如先安装项目准备 Skill：
 
 ```bash
 npx skills add wangbang0218/wang-skills \
-  --skill implement-with-kimi \
+  --skill prepare-for-kimi \
   -g
 ```
 
@@ -18,16 +18,30 @@ npx skills add wangbang0218/wang-skills \
 
 ```bash
 npx skills add wangbang0218/wang-skills \
-  --skill implement-with-kimi \
+  --skill prepare-for-kimi \
   -g \
   -a codex
 ```
 
 ## 可用 Skills
 
+### `prepare-for-kimi`
+
+通过一次只问一个问题的深入访谈细化新项目或现有项目，在用户确认后生成并校验 PRD、架构、可选 UI 规范、模块规格与全链路追踪清单，最终交接给 `implement-with-kimi`。
+
+UI 项目使用已安装的 `baoyu-design` 生成和审批 HTML 设计稿；纯后端项目可将 UI 标记为不适用。该 Skill 只应显式调用，且不会自动启动 Kimi 或进入实现阶段。
+
+安装：
+
+```bash
+npx skills add wangbang0218/wang-skills \
+  --skill prepare-for-kimi \
+  -g
+```
+
 ### `implement-with-kimi`
 
-让 Codex 按持久化的架构、PRD 和模块规范执行严格的测试先行开发，并把 Kimi K3 1M 用作只读的超长上下文检索与一致性审查器。支持 Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
+让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发，并把 Kimi K3 1M 用作只读的超长上下文检索与一致性审查器。支持纯本地输入校验、Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
 
 该 Skill 只应显式调用。它会把仓库内容交给本机 Kimi Code，使用前请确保敏感信息没有进入仓库。
 
@@ -57,7 +71,7 @@ npx skills add . --list
 
 ```bash
 npx skills add . \
-  --skill implement-with-kimi \
+  --skill prepare-for-kimi \
   -g
 ```
 
