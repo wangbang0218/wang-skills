@@ -10,7 +10,7 @@
 
 ```bash
 npx skills add wangbang0218/wang-skills \
-  --skill eolinker-api-doc \
+  --skill implement-with-kimi \
   -g
 ```
 
@@ -18,12 +18,26 @@ npx skills add wangbang0218/wang-skills \
 
 ```bash
 npx skills add wangbang0218/wang-skills \
-  --skill eolinker-api-doc \
+  --skill implement-with-kimi \
   -g \
   -a codex
 ```
 
 ## 可用 Skills
+
+### `implement-with-kimi`
+
+让 Codex 按持久化的架构、PRD 和模块规范执行严格的测试先行开发，并把 Kimi K3 1M 用作只读的超长上下文检索与一致性审查器。支持 Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
+
+该 Skill 只应显式调用。它会把仓库内容交给本机 Kimi Code，使用前请确保敏感信息没有进入仓库。
+
+安装：
+
+```bash
+npx skills add wangbang0218/wang-skills \
+  --skill implement-with-kimi \
+  -g
+```
 
 ### `eolinker-api-doc`
 
@@ -43,7 +57,7 @@ npx skills add . --list
 
 ```bash
 npx skills add . \
-  --skill eolinker-api-doc \
+  --skill implement-with-kimi \
   -g
 ```
 

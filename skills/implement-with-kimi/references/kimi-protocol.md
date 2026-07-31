@@ -1,0 +1,81 @@
+# Kimi protocol
+
+## Contents
+
+- Preflight
+- ACP lifecycle
+- Tool policy
+- Result envelope
+- Evidence
+- Retry and cancellation
+
+## Preflight
+
+Resolve `KIMI_BIN` only when it is an absolute executable path; otherwise search `PATH`. Run `kimi --version`, `kimi doctor config`, and `kimi provider list --json`. Never install, upgrade, log in, or alter configuration.
+
+Require the configured model's underlying id to be `k3`, `maxContextSize >= 1048576`, and `supportEfforts` to include `low`, `high`, and `max`. Do not fall back to K3-256k or another model.
+
+Kimi Code documents `kimi acp` as JSON-RPC over stdin/stdout with clean stdout and diagnostic stderr. The implementation negotiates stable ACP protocol version 1 and uses `initialize -> session/new -> session/set_config_option -> session/prompt -> session/cancel` as needed:
+
+- <https://moonshotai.github.io/kimi-code/en/reference/kimi-acp>
+- <https://agentclientprotocol.com/>
+
+## ACP lifecycle
+
+Create a fresh session per selector, bootstrap, test review, rehydration, audit, query, and retry. Never load or resume a Kimi session. Select `model=kimi-code/k3` and effort:
+
+- selector: low
+- bootstrap, review-tests, rehydrate, query: high
+- audit: max
+
+Use a 30-second startup/handshake idle timeout, a 5-minute selector idle timeout, and a 15-minute main-node idle timeout. Reset only on meaningful unique progress. Do not impose a total execution deadline.
+
+## Tool policy
+
+Advertise ACP filesystem read support but no write or terminal support. Permit repository-scoped text reads, search, and web fetch/search. Reject paths that resolve outside the Git worktree, including symlink escape.
+
+Reject or cancel:
+
+- Write, Edit, delete, or move
+- Bash and other execution
+- Agent and AgentSwarm
+- Skill invocation and user questioning
+- media/binary reads
+- background, cron, or project-state mutation
+
+Give the first permission-controlled violation a denial/correction. Cancel on repeated violations. Because some Kimi tools are auto-approved, inspect streamed `tool_call` messages and cancel immediately when an auto-approved call is outside the allowed read/search/fetch set. Treat ACP guards as a runtime boundary plus prompt constraint, not as a general OS sandbox.
+
+## Result envelope
+
+Require one JSON object with `schema_version: 1`, English keys, and Chinese explanations:
+
+```json
+{
+  "schema_version": 1,
+  "mode": "audit",
+  "run_id": "uuid",
+  "summary": "...",
+  "findings": [],
+  "ac_coverage": [],
+  "next_actions": [],
+  "external_research": { "status": "NOT_REQUESTED", "sources": [] },
+  "context": { "completeness": "FULL", "omissions": [], "compacted": false }
+}
+```
+
+Compute the top status locally from findings with precedence `CONFLICT > BLOCKED > WARNING > READY`; do not trust a model-supplied top status. If Kimi reports its own context compaction, discard the response and retry once with a smaller pack.
+
+Keep the full validated JSON in an OS temporary diagnostic directory. Return a maximum 32 KiB capsule to Codex containing every conflict/blocker, important warnings, AC summary, next actions, omissions, and a raw reference. Retrieve details through `inspect --finding`.
+
+## Evidence
+
+Local evidence requires repository-relative `path`, exact lowercase SHA-256, 1-based line range, exact non-empty excerpt, and claim. Re-read the file and validate all fields after Kimi returns. If the hash matches and the non-empty excerpt occurs exactly once, the validator may deterministically normalize an incorrect line range and records the original range; ambiguous or missing excerpts still fail closed. External evidence requires HTTP(S) URL, title, access time, and claim. Project sources remain authoritative; external sources may expose staleness or conflict but cannot silently override them.
+
+## Retry and cancellation
+
+- Retry network, 429, and 5xx failures at most twice with backoff.
+- Retry an oversized context once after deterministic shrinking.
+- Retry invalid JSON/Schema once in a fresh session with a repair instruction.
+- Do not retry deterministic configuration, conflict, blocker, policy, or evidence failures.
+- Bound combined retries; never create an infinite retry product.
+- On SIGINT/SIGTERM, send `session/cancel`, allow a short shutdown grace period, then terminate. Mark the node `CANCELLED`; never reuse partial streamed output.

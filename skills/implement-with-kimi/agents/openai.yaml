@@ -1,0 +1,6 @@
+interface:
+  display_name: "Implement with Kimi"
+  short_description: "Build modules with Kimi context recovery"
+  default_prompt: "Use $implement-with-kimi to implement this module from its persisted specification with TDD and Kimi context recovery."
+policy:
+  allow_implicit_invocation: false
