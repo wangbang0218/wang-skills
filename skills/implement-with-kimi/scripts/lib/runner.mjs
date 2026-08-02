@@ -70,7 +70,6 @@ export async function runKimiNode({
           requested_effort: effort,
         };
         parsed = validateKimiEnvelope(parsed, { mode, runId, acIds });
-        await validateEnvelopeEvidence(repoRoot, parsed);
       } catch (error) {
         if (error.code === "KIMI_CONTEXT_COMPACTED") {
           throw typedError("CONTEXT_COMPACTED", error.message);
@@ -82,6 +81,11 @@ export async function runKimiNode({
         }
         throw typedError("SCHEMA", error.message);
       }
+      try {
+        await validateEnvelopeEvidence(repoRoot, parsed);
+      } catch (error) {
+        throw typedError("EVIDENCE", error.message);
+      }
 
       const after = repositoryFingerprint(repoRoot);
       if (after !== before) throw typedError("STALE", "Repository changed while Kimi was reviewing; discard this result and retry.");
@@ -90,7 +94,7 @@ export async function runKimiNode({
       return { envelope: parsed, capsule: buildCapsule(parsed), diagnostics };
     } catch (error) {
       if (signal?.aborted) throw typedError("CANCELLED", "Kimi review was cancelled.");
-      if (["SCHEMA", "STALE", "POLICY_VIOLATION", "PROTOCOL", "CONTEXT_COMPACTED", "CONTEXT_OVERSIZE"].includes(error.kind)) throw error;
+      if (["SCHEMA", "EVIDENCE", "STALE", "POLICY_VIOLATION", "PROTOCOL", "CONTEXT_COMPACTED", "CONTEXT_OVERSIZE"].includes(error.kind)) throw error;
       if (error.code === -32000) throw typedError("CONFIG", "Kimi authentication is required; run kimi login first.");
       if (isContextOversize(error)) throw typedError("CONTEXT_OVERSIZE", error.message);
       if (isTransient(error) && transientRetries < 2) {

@@ -69,13 +69,15 @@ Keep the full validated JSON in an OS temporary diagnostic directory. Return a m
 
 ## Evidence
 
-Local evidence requires repository-relative `path`, exact lowercase SHA-256, 1-based line range, exact non-empty excerpt, and claim. Re-read the file and validate all fields after Kimi returns. If the hash matches and the non-empty excerpt occurs exactly once, the validator may deterministically normalize an incorrect line range and records the original range; ambiguous or missing excerpts still fail closed. External evidence requires HTTP(S) URL, title, access time, and claim. Project sources remain authoritative; external sources may expose staleness or conflict but cannot silently override them.
+Local evidence requires repository-relative `path`, exact lowercase SHA-256, 1-based line range, exact non-empty excerpt, and claim. Re-read the file and validate all fields after Kimi returns. Recorded execution logs may originate outside the repository; redact their diagnostic paths before building Kimi context and mark their remaining command, exit code, hash, and excerpt as metadata rather than citeable local-file evidence. Never copy a path embedded in recorded-log metadata into local evidence unless Kimi independently locates and reads that repository file, then returns its repository-relative path. Never accept an OS temporary path, diagnostic directory, `raw_result_ref`, or another absolute path as local evidence.
+
+The validated envelope must retain the exact source excerpt. After the hash matches, the validator may deterministically restore line-leading spaces or tabs omitted by the model when the supplied range is otherwise exact, or when the indentation-insensitive excerpt occurs exactly once; it replaces the excerpt with source text and records the original value. It may also normalize an incorrect range when an exact excerpt occurs once. Ambiguous excerpts, missing excerpts, and internal or trailing whitespace differences fail closed. External evidence requires HTTP(S) URL, title, access time, and claim. Project sources remain authoritative; external sources may expose staleness or conflict but cannot silently override them.
 
 ## Retry and cancellation
 
 - Retry network, 429, and 5xx failures at most twice with backoff.
 - Retry an oversized context once after deterministic shrinking.
-- Retry invalid JSON/Schema once in a fresh session with a repair instruction.
+- Retry invalid JSON/Schema once in a fresh session with a repair instruction. Do not classify local evidence mismatches as Schema errors.
 - Do not retry deterministic configuration, conflict, blocker, policy, or evidence failures.
 - Bound combined retries; never create an infinite retry product.
 - On SIGINT/SIGTERM, send `session/cancel`, allow a short shutdown grace period, then terminate. Mark the node `CANCELLED`; never reuse partial streamed output.

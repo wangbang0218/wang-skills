@@ -40,6 +40,20 @@ input.on("line", (line) => {
     return;
   }
   if (message.method === "session/prompt") {
+    if (Object.hasOwn(process.env, "FAKE_RESPONSE_TEXT")) {
+      send({
+        method: "session/update",
+        params: {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: process.env.FAKE_RESPONSE_TEXT },
+          },
+        },
+      });
+      send({ id: message.id, result: { stopReason: "end_turn" } });
+      return;
+    }
     if (process.env.FAKE_AUTO_TOOL_TITLE) {
       send({
         method: "session/update",

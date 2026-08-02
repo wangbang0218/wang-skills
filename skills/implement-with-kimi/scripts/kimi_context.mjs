@@ -29,6 +29,7 @@ import {
   writeStateFile,
 } from "./lib/state.mjs";
 import { extractJsonObject } from "./lib/prompt.mjs";
+import { buildReviewStateSummary } from "./lib/review-context.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const skillDirectory = path.dirname(scriptDirectory);
@@ -273,13 +274,7 @@ function renderReviewContext(catalog, selection, state, spec, mode) {
       spec_path: spec.relative_path,
       authority_paths: spec.authority_paths,
       git_baseline: state.git_baseline,
-      state_summary: {
-        status: state.status,
-        evidence: state.evidence,
-        unresolved_findings: state.unresolved_findings,
-        warnings: state.warnings,
-        authority_hashes: state.authority_hashes,
-      },
+      state_summary: buildReviewStateSummary(state),
     },
   );
 }

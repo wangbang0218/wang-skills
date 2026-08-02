@@ -14,6 +14,11 @@ test("prompt declares read-only policy and exact output contract", () => {
   assert.match(prompt, /Never write\/edit\/delete\/move/);
   assert.match(prompt, /schema_version/);
   assert.match(prompt, /Mode: audit/);
+  assert.match(prompt, /leading.*space.*tab/i);
+  assert.match(prompt, /repository-relative/);
+  assert.match(prompt, /state_summary.*execution-log path/i);
+  assert.match(prompt, /\/tmp/);
+  assert.match(prompt, /including command or excerpt/);
 });
 
 test("JSON extraction tolerates a fenced repair response", () => {
