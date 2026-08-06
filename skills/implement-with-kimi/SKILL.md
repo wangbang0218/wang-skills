@@ -43,6 +43,8 @@ Read [references/workflow.md](references/workflow.md) before implementation. Use
 
 The CLI never runs project tests. Codex runs them normally and records the command, exit code, log, time, and implementation fingerprint afterward. Environment failures are not valid Red evidence.
 
+For `review-tests`, a valid expected Red caused by missing production behavior is success evidence, not a blocker. Judge findings against the current gate: missing implementation belongs to the subsequent Green work, while invalid tests, mismatched Red, authority conflicts, and uncovered mandatory test requirements may block test acceptance.
+
 ## Recover context
 
 Run `rehydrate` before continuing after compaction, clear, resume, or material uncertainty:
@@ -54,7 +56,7 @@ node <skill-directory>/scripts/kimi_context.mjs rehydrate \
   --authority docs/prd.md
 ```
 
-`rehydrate` may preserve, roll back, or block state; it cannot advance a milestone without execution evidence. Use `inspect --finding <id>` to retrieve one validated full finding without flooding Codex context.
+`rehydrate` may preserve, roll back, or block state; it cannot advance a milestone without execution evidence. It must re-evaluate persisted blockers against the current gate and must not perpetuate an expected implementation gap at `RED_CONFIRMED` as a blocker. Use `inspect --finding <id>` to retrieve one validated full finding without flooding Codex context.
 
 Offer `setup-hook` only when the user explicitly wants automatic Codex lifecycle reminders. Read [references/codex-hooks.md](references/codex-hooks.md) before changing project Hook files.
 

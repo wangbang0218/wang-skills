@@ -231,18 +231,27 @@ export class AcpClient {
     if (this.deniedToolCalls.has(toolCallId)) return;
     const kind = toolCall.kind ?? "other";
     const title = String(toolCall.title ?? "");
-    const mediaRead = kind === "read" && /media|image|video/i.test(title);
-    const outsideRead = kind === "read" && Array.isArray(toolCall.locations) &&
-      toolCall.locations.some((location) => !this.#isRepositoryLocation(location));
+    const outsideRepositoryRead = this.#hasOutsideRepositoryRead(toolCall);
     const permissionControlled = ["edit", "delete", "move", "execute"].includes(kind);
     const allowedNamedOther = kind === "other" && ALLOWED_OTHER_TOOL_TITLES.has(title);
-    if (((!ALLOWED_TOOL_KINDS.has(kind) && !allowedNamedOther) || mediaRead || outsideRead) && !permissionControlled) {
-      const reason = outsideRead ? "Read location is outside the repository." : "Tool is outside the read/search/fetch policy.";
+    if (((!ALLOWED_TOOL_KINDS.has(kind) && !allowedNamedOther) || outsideRepositoryRead) && !permissionControlled) {
+      const reason = outsideRepositoryRead
+        ? "Read/search location is outside the repository."
+        : "Tool is outside the read/search/fetch policy.";
       this.deniedToolCalls.add(toolCallId);
       this.#policyViolation({ kind, method: title || "tool_call", reason });
       this.prohibitedAutoTool = title || kind;
       if (this.currentPrompt) this.cancel(this.currentPrompt.sessionId, "Prohibited auto-approved Kimi tool");
     }
+  }
+
+  #hasOutsideRepositoryRead(toolCall) {
+    if (!["read", "search"].includes(toolCall.kind)) return false;
+    const locations = Array.isArray(toolCall.locations) ? [...toolCall.locations] : [];
+    if (typeof toolCall.rawInput?.path === "string") {
+      locations.push({ path: toolCall.rawInput.path });
+    }
+    return locations.some((location) => !this.#isRepositoryLocation(location));
   }
 
   #isRepositoryLocation(location) {
@@ -315,12 +324,20 @@ export class AcpClient {
   }
 
   #permissionResult(params) {
-    const kind = params?.toolCall?.kind ?? "other";
-    const title = String(params?.toolCall?.title ?? "");
-    const allowed = ALLOWED_TOOL_KINDS.has(kind) || (kind === "other" && ALLOWED_OTHER_TOOL_TITLES.has(title));
+    const toolCall = params?.toolCall ?? {};
+    const kind = toolCall.kind ?? "other";
+    const title = String(toolCall.title ?? "");
+    const outsideRepositoryRead = this.#hasOutsideRepositoryRead(toolCall);
+    const allowed = !outsideRepositoryRead &&
+      (ALLOWED_TOOL_KINDS.has(kind) || (kind === "other" && ALLOWED_OTHER_TOOL_TITLES.has(title)));
     const desiredKinds = allowed ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
     const option = params?.options?.find((item) => desiredKinds.includes(item.kind));
-    if (!allowed) this.#policyViolation({ kind, method: "session/request_permission", reason: "Tool kind is not read-only." });
+    if (!allowed) {
+      const reason = outsideRepositoryRead
+        ? "Read/search location is outside the repository."
+        : "Tool kind is not read-only.";
+      this.#policyViolation({ kind, method: "session/request_permission", reason });
+    }
     return option
       ? { outcome: { outcome: "selected", optionId: option.optionId } }
       : { outcome: { outcome: "cancelled" } };

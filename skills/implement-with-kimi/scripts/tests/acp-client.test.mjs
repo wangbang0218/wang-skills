@@ -61,12 +61,70 @@ test("ACP client permits Kimi WebSearch and FetchURL despite their ACP other kin
   }
 });
 
+test("ACP client permits repository code searches whose titles mention media words", async () => {
+  const cases = [
+    {
+      title: "Searching for 'package:image' in packages/template_engine/lib",
+      rawInput: { pattern: "package:image", path: "fixtures" },
+    },
+    {
+      title: "Reading src/image_renderer.dart",
+      rawInput: { path: "fixtures/image_renderer.dart" },
+    },
+  ];
+
+  for (const item of cases) {
+    const denied = [];
+    const client = new AcpClient({
+      command: process.execPath,
+      args: [fakeAgent],
+      cwd: testDirectory,
+      env: {
+        ...process.env,
+        FAKE_AUTO_TOOL_TITLE: item.title,
+        FAKE_AUTO_TOOL_KIND: "read",
+        FAKE_AUTO_TOOL_RAW_INPUT: JSON.stringify(item.rawInput),
+      },
+      startupIdleMs: 2_000,
+      promptIdleMs: 2_000,
+      onPolicyViolation: (violation) => denied.push(violation),
+    });
+    try {
+      await client.initialize();
+      const session = await client.newSession();
+      const response = await client.prompt(session.sessionId, "return JSON");
+      assert.deepEqual(JSON.parse(response.text), { ok: true });
+      assert.equal(denied.length, 0);
+    } finally {
+      await client.close();
+    }
+  }
+});
+
 test("ACP client rejects any other auto-approved tool", async () => {
   const client = new AcpClient({
     command: process.execPath,
     args: [fakeAgent],
     cwd: testDirectory,
     env: { ...process.env, FAKE_AUTO_TOOL_TITLE: "Agent" },
+    startupIdleMs: 2_000,
+    promptIdleMs: 2_000,
+  });
+  try {
+    await client.initialize();
+    const session = await client.newSession();
+    await assert.rejects(client.prompt(session.sessionId, "return JSON"), (error) => error.kind === "POLICY_VIOLATION");
+  } finally {
+    await client.close();
+  }
+});
+
+test("ACP client rejects the media reader by its non-read ACP kind", async () => {
+  const client = new AcpClient({
+    command: process.execPath,
+    args: [fakeAgent],
+    cwd: testDirectory,
+    env: { ...process.env, FAKE_AUTO_TOOL_TITLE: "ReadMediaFile", FAKE_AUTO_TOOL_KIND: "other" },
     startupIdleMs: 2_000,
     promptIdleMs: 2_000,
   });
@@ -89,6 +147,32 @@ test("ACP client rejects a streamed Read location outside the repository", async
       FAKE_AUTO_TOOL_TITLE: "Read",
       FAKE_AUTO_TOOL_KIND: "read",
       FAKE_AUTO_TOOL_PATH: path.resolve(testDirectory, "../../../../outside.txt"),
+    },
+    startupIdleMs: 2_000,
+    promptIdleMs: 2_000,
+  });
+  try {
+    await client.initialize();
+    const session = await client.newSession();
+    await assert.rejects(client.prompt(session.sessionId, "return JSON"), (error) => error.kind === "POLICY_VIOLATION");
+  } finally {
+    await client.close();
+  }
+});
+
+test("ACP client rejects an outside rawInput.path when ACP omits locations", async () => {
+  const client = new AcpClient({
+    command: process.execPath,
+    args: [fakeAgent],
+    cwd: testDirectory,
+    env: {
+      ...process.env,
+      FAKE_AUTO_TOOL_TITLE: "Searching for 'secret' outside the repository",
+      FAKE_AUTO_TOOL_KIND: "read",
+      FAKE_AUTO_TOOL_RAW_INPUT: JSON.stringify({
+        pattern: "secret",
+        path: path.resolve(testDirectory, "../../../../outside"),
+      }),
     },
     startupIdleMs: 2_000,
     promptIdleMs: 2_000,

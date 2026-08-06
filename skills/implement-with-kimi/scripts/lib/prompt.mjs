@@ -7,6 +7,22 @@ const MODE_TASKS = {
   query: "Answer the focused question using repository evidence. Report conflicts or blockers when they affect the active implementation.",
 };
 
+const MODE_GUARDRAILS = {
+  "review-tests": [
+    "A valid expected Red caused by missing production behavior is success evidence for review-tests.",
+    "Missing production behavior proven by that valid Red is expected at RED_CONFIRMED; report it as INFO, never BLOCKED or CONFLICT.",
+    "Do not require Green, implementation, verification, or audit evidence in this mode.",
+    "Evaluate ac_coverage as test coverage or documented test exceptions, not production completion.",
+    "Use BLOCKED only for an issue that prevents the tests from being accepted or prevents the next legal transition to implementation, such as an invalid or mismatched Red, a test defect, an authority conflict, or a mandatory uncovered test requirement without an approved exception.",
+  ],
+  rehydrate: [
+    "Unfinished implementation is expected work at pre-Green stages, not a workflow blocker by itself.",
+    "At RED_CONFIRMED, missing behavior proven by a valid expected Red is never BLOCKED; the safe next action is review-tests, or implementation after tests have been reviewed.",
+    "Re-evaluate every state_summary BLOCKED finding against the current gate; do not repeat it solely because it was persisted.",
+    "Rehydration cannot advance a milestone; it may restore the current legal stage when no current-gate blocker remains.",
+  ],
+};
+
 export function buildKimiPrompt({ mode, runId, specPath, contextPack, question, effort, repairError }) {
   const task = MODE_TASKS[mode];
   if (!task) throw new Error(`Unsupported prompt mode: ${mode}`);
@@ -18,11 +34,13 @@ export function buildKimiPrompt({ mode, runId, specPath, contextPack, question, 
     "Local project facts follow this authority: latest persisted user-confirmed instruction, then project-declared precedence, then module specification and declared authority documents. Do not invent missing requirements.",
     `Mode: ${mode}. Requested effort: ${effort}. Run id: ${runId}. Specification: ${specPath}.`,
     task,
+    ...(MODE_GUARDRAILS[mode] ?? []),
     question ? `Focused question: ${question}` : "",
     repairError ? `The previous response failed validation: ${repairError}. Produce a corrected response from scratch.` : "",
     "Return exactly one JSON object and no Markdown fence. Use English keys and Chinese explanations. schema_version must be 1.",
     "Required keys: schema_version, mode, run_id, summary, findings, ac_coverage, next_actions, external_research, context.",
     "Each finding requires id, severity (CONFLICT|BLOCKED|WARNING|INFO), title, explanation, evidence[].",
+    "Judge severity relative to the requested mode and current legal state transition. BLOCKED means the current gate cannot safely pass; unfinished work required only by a later gate is WARNING or INFO.",
     "Every CONFLICT or BLOCKED finding must contain at least one evidence item.",
     "Local evidence requires path, sha256, line_start, line_end, excerpt, claim. External evidence requires url, title, accessed_at, claim.",
     "Every local evidence path must be repository-relative and resolve to a real file inside the current Git worktree. Never use an absolute path, an OS temporary path such as /tmp, a diagnostic directory, raw_result_ref, or a state_summary execution-log path as local evidence.",

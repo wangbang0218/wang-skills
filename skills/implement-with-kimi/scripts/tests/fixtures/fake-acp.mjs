@@ -55,6 +55,9 @@ input.on("line", (line) => {
       return;
     }
     if (process.env.FAKE_AUTO_TOOL_TITLE) {
+      const rawInput = process.env.FAKE_AUTO_TOOL_RAW_INPUT
+        ? JSON.parse(process.env.FAKE_AUTO_TOOL_RAW_INPUT)
+        : undefined;
       send({
         method: "session/update",
         params: {
@@ -66,6 +69,7 @@ input.on("line", (line) => {
             title: process.env.FAKE_AUTO_TOOL_TITLE,
             status: "in_progress",
             ...(process.env.FAKE_AUTO_TOOL_PATH ? { locations: [{ path: process.env.FAKE_AUTO_TOOL_PATH }] } : {}),
+            ...(rawInput ? { rawInput } : {}),
           },
         },
       });

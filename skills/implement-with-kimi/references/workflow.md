@@ -37,6 +37,8 @@ NOT_STARTED
 
 Any gate may enter `BLOCKED`. A successful retry restores the preceding state before continuing.
 
+Review severity is relative to the current gate. At `review-tests`, a valid expected Red caused by missing production behavior is the evidence required to pass into `TESTS_REVIEWED`; that missing behavior is not a blocker and belongs to the later implementation/Green gates. Reserve `BLOCKED` for issues that prevent accepting the tests or making the next legal transition, such as an invalid or mismatched Red, a test defect, an authority conflict, or an uncovered mandatory test requirement without an approved exception. Do not require Green, implementation, verification, or audit evidence during test review.
+
 New behavior, bug fixes, business rules, and public contracts require a valid Red. Pure refactors begin from an existing Green baseline. Documentation, generated output, build glue, styling-only work, and similar cases require an explicit test exception tied to AC ids.
 
 Record each exception while the module is `BOOTSTRAP_READY`, before `tests-written`:
@@ -88,7 +90,7 @@ Successful logs retain command, exit code, size, hash, and a compact excerpt. Fa
 
 Use a fresh Kimi session for every `rehydrate`. Compare the repository fingerprint before and after review. Discard the result as `STALE` if the repository changed during the call.
 
-Rehydration restores constraints, decisions, AC coverage, current stage, unresolved findings, and next actions. It cannot move forward. If code or tests changed after Green, Verified, or Audit, roll back to `IMPLEMENTING` and rerun verification.
+Rehydration restores constraints, decisions, AC coverage, current stage, unresolved findings, and next actions. It cannot move forward. Re-evaluate persisted blockers against the current gate instead of repeating them solely because they appear in state: unfinished implementation at a pre-Green stage, including behavior proven missing by a valid Red, is expected work rather than a workflow blocker. If code or tests changed after Green, Verified, or Audit, roll back to `IMPLEMENTING` and rerun verification.
 
 ## Completion
 
