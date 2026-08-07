@@ -41,9 +41,9 @@ npx skills add wangbang0218/wang-skills \
 
 ### `implement-with-kimi`
 
-让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发，并把 Kimi K3 1M 用作只读的超长上下文检索与一致性审查器。支持纯本地输入校验、Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
+让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发，并把 Kimi K3 1M 用作首选的只读超长上下文审查器。经每个运行显式授权后，可在 Kimi 登录、额度、订阅或服务可用性失败时调用本机 Claude Code 的默认供应商、模型和认证作为 fallback；不绑定 DeepSeek、Qwen 或具体模型名。支持纯本地输入校验、Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
 
-该 Skill 只应显式调用。它会把仓库内容交给本机 Kimi Code，使用前请确保敏感信息没有进入仓库。
+该 Skill 只应显式调用。它会把仓库内容交给当前获授权的 reviewer，使用前请确保敏感信息没有进入仓库。
 
 安装：
 

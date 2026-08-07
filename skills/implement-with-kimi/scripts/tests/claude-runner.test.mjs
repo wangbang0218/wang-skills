@@ -1,0 +1,85 @@
+import assert from "node:assert/strict";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import test from "node:test";
+
+import { claudeArguments, claudeEnvironment, preflightClaude, runClaudeNode } from "../lib/claude-runner.mjs";
+
+function envelope(runId, compacted = false) {
+  return {
+    schema_version: 1,
+    mode: "bootstrap",
+    run_id: runId,
+    summary: "审查完成。",
+    findings: [],
+    ac_coverage: [],
+    next_actions: [],
+    external_research: { status: "NOT_REQUESTED", sources: [] },
+    context: { completeness: "FULL", omissions: [], compacted },
+  };
+}
+
+async function fakeClaude(root, response) {
+  const binary = path.join(root, "claude");
+  const help = ["--safe-mode", "--no-session-persistence", "--json-schema", "--permission-mode", "--tools", "--allowedTools", "--disallowedTools", "--effort"].join(" ");
+  await writeFile(binary, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === "--version") { console.log("9.9.9"); process.exit(0); }
+if (args[0] === "--help") { console.log(${JSON.stringify(help)}); process.exit(0); }
+for await (const _ of process.stdin) {}
+console.log(JSON.stringify(${JSON.stringify(response)}));
+`, "utf8");
+  await chmod(binary, 0o755);
+  return binary;
+}
+
+test("Claude runner uses safe mode, max effort, no persistence, and a read-only tool surface", () => {
+  const args = claudeArguments();
+  assert.ok(args.includes("--safe-mode"));
+  assert.ok(args.includes("--no-session-persistence"));
+  assert.equal(args[args.indexOf("--effort") + 1], "max");
+  assert.match(args[args.indexOf("--tools") + 1], /Read,Grep,Glob,WebFetch,WebSearch/);
+  assert.match(args[args.indexOf("--disallowedTools") + 1], /Bash,Edit,Write,.*Agent,Skill,AskUserQuestion/);
+  assert.equal(claudeEnvironment({ PATH: "/bin" }).DISABLE_COMPACT, "1");
+  assert.equal(claudeEnvironment({ PATH: "/bin" }).CLAUDE_CODE_MAX_CONTEXT_TOKENS, "1048576");
+});
+
+test("Claude preflight feature-detects isolation flags and runs a structured review", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "iwk-claude-"));
+  spawnSync("git", ["init", "-q"], { cwd: root });
+  const response = { structured_output: envelope("run-claude"), modelUsage: { "configured-default": { inputTokens: 10 } } };
+  const binary = await fakeClaude(root, response);
+  const preflight = await preflightClaude({ env: { ...process.env, CLAUDE_BIN: binary } });
+  const result = await runClaudeNode({
+    repoRoot: root,
+    mode: "bootstrap",
+    runId: "run-claude",
+    specPath: "spec.md",
+    contextPack: "<context />",
+    acIds: [],
+    preflight,
+  });
+  assert.equal(result.envelope.reviewer, "claude-code");
+  assert.equal(result.envelope.model.requested_effort, "max");
+  assert.deepEqual(result.envelope.model.reported_models, ["configured-default"]);
+});
+
+test("Claude compaction fails closed instead of shrinking the context", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "iwk-claude-context-"));
+  spawnSync("git", ["init", "-q"], { cwd: root });
+  const binary = await fakeClaude(root, { structured_output: envelope("run-context", true) });
+  await assert.rejects(
+    runClaudeNode({
+      repoRoot: root,
+      mode: "bootstrap",
+      runId: "run-context",
+      specPath: "spec.md",
+      contextPack: "<context />",
+      acIds: [],
+      preflight: { binary, version: "9.9.9" },
+    }),
+    (error) => error.kind === "CONTEXT_OVERSIZE",
+  );
+});

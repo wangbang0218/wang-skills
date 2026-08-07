@@ -73,7 +73,7 @@ function parseManagedBlock(document) {
   const match = body.match(/^```json\s*\n([\s\S]*?)\n```$/);
   if (!match) throw new Error("状态文件托管区不是 JSON");
   const state = JSON.parse(match[1]);
-  if (state.tool !== "implement-with-kimi" || state.state_schema_version !== 1) throw new Error("状态文件版本不受支持");
+  if (state.tool !== "implement-with-kimi" || ![1, 2].includes(state.state_schema_version)) throw new Error("状态文件版本不受支持");
   return state;
 }
 

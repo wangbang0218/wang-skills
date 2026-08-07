@@ -7,10 +7,15 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { sha256File } from "../lib/evidence.mjs";
-import { runKimiNode } from "../lib/runner.mjs";
+import { isTransientKimiError, runKimiNode } from "../lib/runner.mjs";
 
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const fakeAgent = path.join(testsDirectory, "fixtures/fake-acp.mjs");
+
+test("explicit quota exhaustion is not retried as a transient 429", () => {
+  assert.equal(isTransientKimiError(new Error("429 billing cycle quota exhausted")), false);
+  assert.equal(isTransientKimiError(new Error("429 engine overload")), true);
+});
 
 function envelope({ runId, sha256, excerpt, evidencePath = "source.txt" }) {
   return {

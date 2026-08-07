@@ -12,24 +12,24 @@ export function computeStatus(findings) {
   return "READY";
 }
 
-export function validateKimiEnvelope(input, { mode, runId, acIds } = {}) {
-  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Kimi output must be a JSON object.");
-  if (input.schema_version !== 1) throw new Error("Kimi output schema_version must be 1.");
-  if (!MODES.has(input.mode)) throw new Error(`Unsupported Kimi mode: ${input.mode}`);
-  if (mode && input.mode !== mode) throw new Error(`Kimi mode mismatch: expected ${mode}, received ${input.mode}.`);
-  if (typeof input.run_id !== "string" || !input.run_id) throw new Error("Kimi output run_id is required.");
-  if (runId && input.run_id !== runId) throw new Error("Kimi output run_id does not match the active run.");
-  if (typeof input.summary !== "string" || !input.summary) throw new Error("Kimi output summary must be a non-empty string.");
-  if (!Array.isArray(input.findings)) throw new Error("Kimi output findings must be an array.");
+export function validateReviewerEnvelope(input, { mode, runId, acIds } = {}) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Reviewer output must be a JSON object.");
+  if (input.schema_version !== 1) throw new Error("Reviewer output schema_version must be 1.");
+  if (!MODES.has(input.mode)) throw new Error(`Unsupported reviewer mode: ${input.mode}`);
+  if (mode && input.mode !== mode) throw new Error(`Reviewer mode mismatch: expected ${mode}, received ${input.mode}.`);
+  if (typeof input.run_id !== "string" || !input.run_id) throw new Error("Reviewer output run_id is required.");
+  if (runId && input.run_id !== runId) throw new Error("Reviewer output run_id does not match the active run.");
+  if (typeof input.summary !== "string" || !input.summary) throw new Error("Reviewer output summary must be a non-empty string.");
+  if (!Array.isArray(input.findings)) throw new Error("Reviewer output findings must be an array.");
 
   const findings = input.findings.map((finding, index) => validateFinding(finding, index));
   assertUnique(findings.map((finding) => finding.id), "finding ids");
-  if (!Array.isArray(input.ac_coverage)) throw new Error("Kimi output ac_coverage must be an array.");
+  if (!Array.isArray(input.ac_coverage)) throw new Error("Reviewer output ac_coverage must be an array.");
   const acCoverage = input.ac_coverage.map((item, index) => validateAcCoverage(item, index));
   assertUnique(acCoverage.map((item) => item.ac_id), "AC coverage ids");
   if (acIds) assertExactAcCoverage(acCoverage, acIds);
   if (!Array.isArray(input.next_actions) || input.next_actions.some((item) => typeof item !== "string" || !item)) {
-    throw new Error("Kimi output next_actions must be an array of non-empty strings.");
+    throw new Error("Reviewer output next_actions must be an array of non-empty strings.");
   }
   const nextActions = input.next_actions;
   const externalResearch = validateExternalResearch(input.external_research);
@@ -86,15 +86,15 @@ function validateContext(value) {
   if (!Array.isArray(context.omissions)) throw new Error("context.omissions must be an array.");
   if (typeof context.compacted !== "boolean") throw new Error("context.compacted must be a boolean.");
   if (context.compacted === true) {
-    const error = new Error("Kimi reported that its own context was compacted.");
-    error.code = "KIMI_CONTEXT_COMPACTED";
+    const error = new Error("Reviewer reported that its own context was compacted.");
+    error.code = "REVIEWER_CONTEXT_COMPACTED";
     throw error;
   }
   return context;
 }
 
 function assertUnique(values, label) {
-  if (new Set(values).size !== values.length) throw new Error(`Kimi output contains duplicate ${label}.`);
+  if (new Set(values).size !== values.length) throw new Error(`Reviewer output contains duplicate ${label}.`);
 }
 
 function assertExactAcCoverage(coverage, expectedIds) {
@@ -103,7 +103,7 @@ function assertExactAcCoverage(coverage, expectedIds) {
   const missing = [...expected].filter((id) => !actual.has(id));
   const unknown = [...actual].filter((id) => !expected.has(id));
   if (missing.length > 0 || unknown.length > 0) {
-    throw new Error(`Kimi AC coverage mismatch; missing: ${missing.join(", ") || "none"}; unknown: ${unknown.join(", ") || "none"}.`);
+    throw new Error(`Reviewer AC coverage mismatch; missing: ${missing.join(", ") || "none"}; unknown: ${unknown.join(", ") || "none"}.`);
   }
 }
 
@@ -142,10 +142,13 @@ export function buildCapsule(envelope, { maxBytes = 32 * 1024 } = {}) {
     };
   }
   if (Buffer.byteLength(JSON.stringify(capsule)) > maxBytes) {
-    throw new Error("Mandatory Kimi findings exceed the Codex capsule limit.");
+    throw new Error("Mandatory reviewer findings exceed the Codex capsule limit.");
   }
   return capsule;
 }
+
+// Backward-compatible export for callers and tests written before reviewer fallback existed.
+export const validateKimiEnvelope = validateReviewerEnvelope;
 
 function compactFinding(finding) {
   return {

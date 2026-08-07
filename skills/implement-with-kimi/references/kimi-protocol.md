@@ -81,3 +81,4 @@ The validated envelope must retain the exact source excerpt. After the hash matc
 - Do not retry deterministic configuration, conflict, blocker, policy, or evidence failures.
 - Bound combined retries; never create an infinite retry product.
 - On SIGINT/SIGTERM, send `session/cancel`, allow a short shutdown grace period, then terminate. Mark the node `CANCELLED`; never reuse partial streamed output.
+- Do not transient-retry an explicit billing, monthly, or rolling quota exhaustion. Route only after the error is classified under [reviewer-fallback.md](reviewer-fallback.md).

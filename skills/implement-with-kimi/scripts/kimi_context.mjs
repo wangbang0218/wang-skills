@@ -9,6 +9,7 @@ import { sha256File } from "./lib/evidence.mjs";
 import { validateImplementationPackage } from "./lib/document-package.mjs";
 import { HOOK_STATUS_MESSAGE, mergeHookConfig, removeHookConfig } from "./lib/hook-config.mjs";
 import { preflightKimi } from "./lib/preflight.mjs";
+import { preflightClaude, runClaudeNode } from "./lib/claude-runner.mjs";
 import {
   buildRepositoryCatalog,
   getRepoRoot,
@@ -17,14 +18,18 @@ import {
   repositoryFingerprint,
   selectRepositoryContext,
 } from "./lib/repository.mjs";
-import { runKimiNode, validateEnvelopeEvidence } from "./lib/runner.mjs";
-import { validateKimiEnvelope } from "./lib/schema.mjs";
+import { probeKimiAvailability, runKimiNode, validateEnvelopeEvidence } from "./lib/runner.mjs";
+import { validateReviewerEnvelope } from "./lib/schema.mjs";
+import { classifyKimiFallback, fallbackEnabled, shouldUseStickyFallback } from "./lib/reviewer.mjs";
 import { loadAndValidateSpec } from "./lib/spec.mjs";
 import {
   applyStateEvent,
+  activateReviewerFailover,
+  clearReviewerFailover,
   createInitialState,
   deriveStatePath,
   discoverStateDocuments,
+  enableReviewerFallback,
   readStateFile,
   writeStateFile,
 } from "./lib/state.mjs";
@@ -46,7 +51,7 @@ main().catch((error) => {
   const payload = {
     schema_version: 1,
     status: error.kind === "CANCELLED" ? "CANCELLED" : "ERROR",
-    error: { kind: error.kind ?? "GENERAL", message: error.message },
+    error: { kind: error.kind ?? "GENERAL", message: error.message, ...(error.details ? { details: error.details } : {}) },
     ...(error.issues ? { issues: error.issues } : {}),
   };
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -75,6 +80,8 @@ async function main() {
   const specPath = requireOption(parsed.options, "spec");
   const spec = await loadAndValidateSpec(repoRoot, specPath, arrayOption(parsed.options, "authority"));
   if (parsed.command === "bootstrap") return bootstrap(repoRoot, spec, parsed.options);
+  if (parsed.command === "enable-reviewer-fallback") return enableFallback(repoRoot, spec, parsed.options);
+  if (parsed.command === "retry-kimi") return retryKimi(repoRoot, spec);
   if (parsed.command === "record") return recordEvidence(repoRoot, spec, parsed.event, parsed.options);
   if (parsed.command === "suspend") return suspend(repoRoot, spec, parsed.options);
   if (parsed.command === "resume") return resume(repoRoot, spec, parsed.options);
@@ -114,6 +121,7 @@ async function bootstrap(repoRoot, spec, options) {
     state.goal = { status: options.goal ?? "unknown" };
     if (!options.goal) state = applyStateEvent(state, "warning", { code: "GOAL_STATUS_UNKNOWN", message: "No Goal status was supplied." });
   }
+  state = configureFallbackFromOptions(state, options);
   if (existing && !retryBlockedBootstrap) {
     const archived = structuredClone(existing.state);
     delete archived.past_runs;
@@ -121,7 +129,11 @@ async function bootstrap(repoRoot, spec, options) {
   }
   await writeStateFile(stateLocation, state, existing?.userNotes ?? "");
 
-  const result = await executeReview(repoRoot, spec, state, "bootstrap", options);
+  const result = await executeReview(repoRoot, spec, state, "bootstrap", options, async (details) => {
+    state = activateReviewerFailover(state, details);
+    await writeStateFile(stateLocation, state, existing?.userNotes ?? "");
+    return state;
+  });
   state = applyReviewToState(state, result, "bootstrap-ready");
   await writeStateFile(stateLocation, state, existing?.userNotes ?? "");
   emitResult(result, state, repoRoot, stateLocation);
@@ -150,7 +162,11 @@ async function reviewCommand(repoRoot, spec, mode, options) {
     throw typedError("WORKFLOW", "Implementation changed after verification; rerun Green and verification before audit.");
   }
 
-  const result = await executeReview(repoRoot, spec, state, mode, options);
+  const result = await executeReview(repoRoot, spec, state, mode, options, async (details) => {
+    state = activateReviewerFailover(state, details);
+    await writeStateFile(stateLocation, state, loaded.userNotes);
+    return state;
+  });
   const successEvent = mode === "review-tests" ? "tests-reviewed" : mode === "audit" ? "audited" : null;
   state = applyReviewToState(state, result, successEvent);
   if (mode === "rehydrate" && !isBlocking(result.envelope.status)) {
@@ -167,8 +183,13 @@ async function resume(repoRoot, spec, options) {
   const loaded = await requireState(repoRoot, spec, stateLocation);
   if (!loaded.state.suspended) throw typedError("WORKFLOW", "Only a suspended module can be resumed.");
   await assertNoOtherActiveState(repoRoot, stateLocation);
-  const result = await executeReview(repoRoot, spec, loaded.state, "rehydrate", options);
-  let state = applyReviewToState(loaded.state, result, null);
+  let activeState = loaded.state;
+  const result = await executeReview(repoRoot, spec, activeState, "rehydrate", options, async (details) => {
+    activeState = activateReviewerFailover(activeState, details);
+    await writeStateFile(stateLocation, activeState, loaded.userNotes);
+    return activeState;
+  });
+  let state = applyReviewToState(activeState, result, null);
   if (!isBlocking(result.envelope.status)) {
     state = applyStateEvent(state, "resume", {});
     state = rollbackStaleMilestoneIfNeeded(state, repoRoot);
@@ -190,6 +211,36 @@ async function suspend(repoRoot, spec, options) {
   emit({ schema_version: 1, status: "SUSPENDED", run_id: state.run_id, state_path: relative(repoRoot, stateLocation) });
 }
 
+async function enableFallback(repoRoot, spec, options) {
+  validateFallbackOptions(options, { required: true });
+  const stateLocation = stateFileLocation(repoRoot, spec.relative_path);
+  const loaded = await requireState(repoRoot, spec, stateLocation);
+  if (!loaded.state.active) throw typedError("WORKFLOW", "Reviewer fallback can only be enabled for an active run.");
+  await preflightClaude();
+  const state = enableReviewerFallback(loaded.state);
+  await writeStateFile(stateLocation, state, loaded.userNotes);
+  emit({
+    schema_version: 1,
+    status: "REVIEWER_FALLBACK_ENABLED",
+    run_id: state.run_id,
+    fallback_reviewer: "claude-code",
+    required_context_tokens: 1_048_576,
+    state_path: relative(repoRoot, stateLocation),
+  });
+}
+
+async function retryKimi(repoRoot, spec) {
+  const stateLocation = stateFileLocation(repoRoot, spec.relative_path);
+  const loaded = await requireState(repoRoot, spec, stateLocation);
+  if (!loaded.state.active) throw typedError("WORKFLOW", "Kimi can only be retried for an active run.");
+  if (!fallbackEnabled(loaded.state)) throw typedError("WORKFLOW", "Reviewer fallback is not enabled for this run.");
+  const preflight = await preflightKimi();
+  await probeKimiAvailability({ repoRoot, preflight, signal: controller.signal, onProgress: progress });
+  const state = clearReviewerFailover(loaded.state);
+  await writeStateFile(stateLocation, state, loaded.userNotes);
+  emit({ schema_version: 1, status: "KIMI_READY", run_id: state.run_id, state_path: relative(repoRoot, stateLocation) });
+}
+
 async function recordEvidence(repoRoot, spec, event, options) {
   if (!event) throw typedError("USAGE", "record requires an event name.");
   const stateLocation = stateFileLocation(repoRoot, spec.relative_path);
@@ -202,9 +253,48 @@ async function recordEvidence(repoRoot, spec, event, options) {
   emit({ schema_version: 1, status: "RECORDED", event, run_id: state.run_id, module_status: state.status, state_path: relative(repoRoot, stateLocation) });
 }
 
-async function executeReview(repoRoot, spec, state, mode, options) {
-  const preflight = await preflightKimi();
-  progress(`Kimi ${preflight.version}; model ${preflight.model_alias}; mode ${mode}`);
+async function executeReview(repoRoot, spec, state, mode, options, onFailover = async () => state) {
+  let activeState = state;
+  let kimiPreflight = null;
+  let claudePreflight = null;
+  let stickyFallback = shouldUseStickyFallback(activeState);
+  const runReviewerNode = async (node) => {
+    if (!stickyFallback) {
+      try {
+        kimiPreflight ??= await preflightKimi();
+        progress(`Kimi ${kimiPreflight.version}; model ${kimiPreflight.model_alias}; mode ${node.mode}`);
+        const result = await runKimiNode({ ...node, preflight: kimiPreflight });
+        result.envelope.reviewer = "kimi";
+        return result;
+      } catch (error) {
+        const fallback = fallbackEnabled(activeState) ? classifyKimiFallback(error) : null;
+        if (!fallback) {
+          error.reviewer = "kimi";
+          throw error;
+        }
+        const details = {
+          scope: fallback.scope,
+          reasonCode: fallback.reason_code,
+          message: error.message,
+        };
+        activeState = await onFailover(details);
+        stickyFallback = fallback.scope === "RUN";
+        progress(`Kimi unavailable (${fallback.reason_code}); using Claude Code for ${fallback.scope === "RUN" ? "this run" : "this node"}`);
+      }
+    }
+    claudePreflight ??= await preflightClaude();
+    progress(`Claude Code ${claudePreflight.version}; configured default provider/model; mode ${node.mode}`);
+    try {
+      return await runClaudeNode({ ...node, preflight: claudePreflight });
+    } catch (error) {
+      error.reviewer = "claude-code";
+      error.details = {
+        fallback_reviewer: "claude-code",
+        kimi_failure: activeState.reviewer_failover?.message ?? null,
+      };
+      throw error;
+    }
+  };
   const catalog = await buildRepositoryCatalog(repoRoot, { specPath: spec.relative_path, authorityPaths: spec.authority_paths });
   let selectorPaths = [];
   let selection = selectRepositoryContext(catalog, { budgetTokens: CONTEXT_BUDGET });
@@ -213,14 +303,13 @@ async function executeReview(repoRoot, spec, state, mode, options) {
   const total = catalog.catalog.reduce((sum, file) => sum + file.estimated_tokens, 0);
   if (total > CONTEXT_BUDGET) {
     const selectorContext = renderSelectorContext(catalog, spec, CONTEXT_BUDGET);
-    const selector = await runKimiNode({
+    const selector = await runReviewerNode({
       repoRoot,
       mode: "selector",
       runId: state.run_id,
       specPath: spec.relative_path,
       acIds: spec.ac_ids,
       contextPack: selectorContext,
-      preflight,
       signal: controller.signal,
       onProgress: progress,
     });
@@ -234,15 +323,14 @@ async function executeReview(repoRoot, spec, state, mode, options) {
     if (selection.status === "BLOCKED") throw typedError("BLOCKED", selection.reason);
   }
 
-  const runSelection = (selected) => runKimiNode({
+  const runSelection = (selected) => runReviewerNode({
     repoRoot,
     mode,
     runId: state.run_id,
     specPath: spec.relative_path,
     acIds: spec.ac_ids,
-    contextPack: renderReviewContext(catalog, selected, state, spec, mode),
+    contextPack: renderReviewContext(catalog, selected, activeState, spec, mode),
     question: options.question,
-    preflight,
     signal: controller.signal,
     onProgress: progress,
   });
@@ -250,7 +338,7 @@ async function executeReview(repoRoot, spec, state, mode, options) {
   try {
     return await runSelection(selection);
   } catch (error) {
-    if (!["CONTEXT_COMPACTED", "CONTEXT_OVERSIZE"].includes(error.kind)) throw error;
+    if (!["CONTEXT_COMPACTED", "CONTEXT_OVERSIZE"].includes(error.kind) || error.reviewer === "claude-code") throw error;
     progress(`Kimi context retry after ${error.kind}; shrinking initial pack to ${SHRUNK_CONTEXT_BUDGET} tokens`);
     const shrunk = selectRepositoryContext(catalog, { budgetTokens: SHRUNK_CONTEXT_BUDGET, selectorPaths });
     if (shrunk.status === "BLOCKED") throw typedError("BLOCKED", shrunk.reason);
@@ -284,8 +372,9 @@ function applyReviewToState(inputState, result, successEvent) {
   if (!isBlocking(result.envelope.status) && state.status === "BLOCKED" && state.previous_status) {
     state.status = state.previous_status;
   }
-  state.last_kimi_review = {
+  state.last_reviewer_review = {
     at: new Date().toISOString(),
+    reviewer: result.envelope.reviewer ?? "kimi",
     mode: result.envelope.mode,
     status: result.envelope.status,
     model: result.envelope.model,
@@ -318,11 +407,12 @@ async function inspectFinding(repoRoot, options) {
   const specPath = requireOption(options, "spec");
   const spec = await loadAndValidateSpec(repoRoot, specPath, arrayOption(options, "authority"));
   const loaded = await requireState(repoRoot, spec, stateFileLocation(repoRoot, spec.relative_path));
-  const ref = loaded.state.last_kimi_review?.raw_result_ref;
-  if (!ref) throw typedError("WORKFLOW", "No retained Kimi result is available.");
+  const review = loaded.state.last_reviewer_review;
+  const ref = review?.raw_result_ref;
+  if (!ref) throw typedError("WORKFLOW", "No retained reviewer result is available.");
   const raw = await readFile(ref, "utf8");
-  const envelope = validateKimiEnvelope(extractJsonObject(raw), {
-    mode: loaded.state.last_kimi_review.mode,
+  const envelope = validateReviewerEnvelope(extractJsonObject(raw), {
+    mode: review.mode,
     runId: loaded.state.run_id,
     acIds: spec.ac_ids,
   });
@@ -443,6 +533,24 @@ function validateAcIds(acIds, spec) {
 
 function unique(values) {
   return [...new Set(values)];
+}
+
+function configureFallbackFromOptions(state, options) {
+  const supplied = options["fallback-reviewer"] !== undefined || options["reviewer-context"] !== undefined || options["consent-repository-to-reviewer"] === true;
+  if (!supplied) return state;
+  validateFallbackOptions(options, { required: true });
+  return enableReviewerFallback(state);
+}
+
+function validateFallbackOptions(options, { required = false } = {}) {
+  const reviewer = options["fallback-reviewer"];
+  const context = String(options["reviewer-context"] ?? "").toLowerCase();
+  const consent = options["consent-repository-to-reviewer"] === true;
+  if (required && reviewer !== "claude-code") throw typedError("USAGE", "--fallback-reviewer must be claude-code.");
+  if (required && !["1m", "1048576", "1,048,576"].includes(context)) {
+    throw typedError("USAGE", "--reviewer-context must explicitly declare 1m.");
+  }
+  if (required && !consent) throw typedError("USAGE", "--consent-repository-to-reviewer is required.");
 }
 
 async function authorityMatches(repoRoot, state, spec) {
@@ -593,7 +701,7 @@ function parseArguments(argv) {
     const token = argv[index++];
     if (!token.startsWith("--")) throw typedError("USAGE", `Unexpected argument: ${token}`);
     const name = token.slice(2);
-    if (["new-run", "matched-expectation", "help"].includes(name)) {
+    if (["new-run", "matched-expectation", "consent-repository-to-reviewer", "help"].includes(name)) {
       options[name] = true;
       continue;
     }
@@ -629,6 +737,10 @@ function usage() {
 Usage:
   kimi_context.mjs validate-package --package <file> [--spec <module.md>]
   kimi_context.mjs bootstrap --spec <file> [--authority <file> ...] [--goal active|none]
+    [--fallback-reviewer claude-code --reviewer-context 1m --consent-repository-to-reviewer]
+  kimi_context.mjs enable-reviewer-fallback --spec <file> --fallback-reviewer claude-code
+    --reviewer-context 1m --consent-repository-to-reviewer
+  kimi_context.mjs retry-kimi --spec <file> [--authority <file> ...]
   kimi_context.mjs review-tests|rehydrate|audit --spec <file> [--authority <file> ...]
   kimi_context.mjs query --spec <file> --question <text> [--authority <file> ...]
   kimi_context.mjs record <event> --spec <file> [event evidence options]

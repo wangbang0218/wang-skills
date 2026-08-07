@@ -1,6 +1,6 @@
 interface:
   display_name: "Implement with Kimi"
-  short_description: "Build modules with Kimi context recovery"
-  default_prompt: "Use $implement-with-kimi to implement this module from its persisted specification with TDD and Kimi context recovery."
+  short_description: "Build modules with Kimi and reviewer fallback"
+  default_prompt: "Use $implement-with-kimi to implement this module from its persisted specification with TDD, Kimi-first review, and explicitly authorized local Claude Code fallback."
 policy:
   allow_implicit_invocation: false

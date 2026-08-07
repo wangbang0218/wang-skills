@@ -21,7 +21,7 @@ The deterministic script owns that block. Preserve all text under `## User notes
 
 ## Managed fields
 
-Schema version 1 records:
+Schema version 2 records:
 
 - `tool`, `state_schema_version`
 - `spec_path`, `spec_sha256`, `authority_paths`, `authority_hashes`
@@ -29,7 +29,8 @@ Schema version 1 records:
 - `git_baseline`, `implementation_fingerprint`
 - `goal`
 - Red plan and execution evidence
-- latest Kimi review and raw diagnostic reference
+- per-run reviewer consent, required 1M declaration, failover scope and reason
+- latest reviewer identity/model metadata and raw diagnostic reference
 - unresolved findings and warnings
 - Hook observation status
 - append-only event history and archived prior runs
@@ -67,4 +68,4 @@ Only deterministic events may move state forward:
 
 ## Migration rules
 
-Read version 1 directly. Migrate supported older versions explicitly while preserving User notes and appending a migration event. Reject a newer unknown version and require a Skill upgrade. Never rebuild a malformed state file automatically.
+Migrate version 1 to version 2 in place. Preserve run id, activity, status, fingerprints, evidence, findings, warnings, archived runs, and User notes. Convert `last_kimi_review` to `last_reviewer_review` with `reviewer: kimi`; default fallback authorization to disabled and append a migration event. Reject a newer unknown version and require a Skill upgrade. Never rebuild a malformed state file automatically.

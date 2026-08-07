@@ -40,6 +40,11 @@ input.on("line", (line) => {
     return;
   }
   if (message.method === "session/prompt") {
+    if (process.env.FAKE_PROMPT_ERROR) {
+      const error = JSON.parse(process.env.FAKE_PROMPT_ERROR);
+      send({ id: message.id, error });
+      return;
+    }
     if (Object.hasOwn(process.env, "FAKE_RESPONSE_TEXT")) {
       send({
         method: "session/update",

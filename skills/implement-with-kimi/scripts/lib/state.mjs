@@ -2,7 +2,7 @@ import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-export const STATE_SCHEMA_VERSION = 1;
+export const STATE_SCHEMA_VERSION = 2;
 export const MANAGED_START = "<!-- implement-with-kimi:managed:start -->";
 export const MANAGED_END = "<!-- implement-with-kimi:managed:end -->";
 
@@ -42,7 +42,9 @@ export function createInitialState({ specPath, specSha256, runId, now = new Date
     created_at: now,
     updated_at: now,
     implementation_fingerprint: null,
-    last_kimi_review: null,
+    reviewer_policy: defaultReviewerPolicy(),
+    reviewer_failover: defaultReviewerFailover(),
+    last_reviewer_review: null,
     red_plan: null,
     evidence: [],
     unresolved_findings: [],
@@ -108,8 +110,76 @@ export function parseStateDocument(document) {
   return { state, userNotes };
 }
 
-function migrateState(state) {
-  throw new Error(`State schema version ${state.state_schema_version} has no supported migration.`);
+function migrateState(input) {
+  let state = structuredClone(input);
+  if (state.state_schema_version === 1) {
+    const at = state.updated_at ?? new Date().toISOString();
+    state.reviewer_policy = defaultReviewerPolicy();
+    state.reviewer_failover = defaultReviewerFailover();
+    state.last_reviewer_review = state.last_kimi_review
+      ? { reviewer: "kimi", ...state.last_kimi_review }
+      : null;
+    delete state.last_kimi_review;
+    state.state_schema_version = 2;
+    state.history ??= [];
+    state.history.push({ at, event: "state-migrated", status: state.status, details: { from: 1, to: 2 } });
+  }
+  if (state.state_schema_version !== STATE_SCHEMA_VERSION) {
+    throw new Error(`State schema version ${state.state_schema_version} has no supported migration.`);
+  }
+  return state;
+}
+
+export function enableReviewerFallback(inputState, { now = new Date().toISOString() } = {}) {
+  const state = structuredClone(inputState);
+  state.reviewer_policy = {
+    preferred: "kimi",
+    fallback: "claude-code",
+    repository_consent: true,
+    required_context_tokens: 1_048_576,
+    enabled_at: now,
+  };
+  state.reviewer_failover ??= defaultReviewerFailover();
+  state.updated_at = now;
+  state.history.push({ at: now, event: "reviewer-fallback-enabled", status: state.status, details: { fallback: "claude-code", required_context_tokens: 1_048_576 } });
+  return state;
+}
+
+export function activateReviewerFailover(inputState, { scope, reasonCode, message, now = new Date().toISOString() }) {
+  if (!["RUN", "NODE"].includes(scope)) throw new Error("Reviewer failover scope must be RUN or NODE.");
+  const state = structuredClone(inputState);
+  state.reviewer_failover = {
+    active: scope === "RUN",
+    scope,
+    reason_code: reasonCode,
+    message: String(message || ""),
+    activated_at: now,
+  };
+  state.updated_at = now;
+  state.history.push({ at: now, event: "reviewer-failover", status: state.status, details: { scope, reason_code: reasonCode } });
+  return state;
+}
+
+export function clearReviewerFailover(inputState, { now = new Date().toISOString() } = {}) {
+  const state = structuredClone(inputState);
+  state.reviewer_failover = defaultReviewerFailover();
+  state.updated_at = now;
+  state.history.push({ at: now, event: "kimi-retry-ready", status: state.status, details: {} });
+  return state;
+}
+
+function defaultReviewerPolicy() {
+  return {
+    preferred: "kimi",
+    fallback: null,
+    repository_consent: false,
+    required_context_tokens: null,
+    enabled_at: null,
+  };
+}
+
+function defaultReviewerFailover() {
+  return { active: false, scope: null, reason_code: null, message: null, activated_at: null };
 }
 
 export function applyStateEvent(inputState, event, details = {}, now = new Date().toISOString()) {

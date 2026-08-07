@@ -91,12 +91,12 @@ test("blocking findings require evidence and AC coverage is validated", () => {
   assert.throws(() => validateKimiEnvelope(input), /invalid status/);
 });
 
-test("Kimi self-compaction is rejected with a retryable code", () => {
+test("reviewer self-compaction is rejected with a retryable code", () => {
   const input = envelope([]);
   input.context.compacted = true;
   assert.throws(
     () => validateKimiEnvelope(input),
-    (error) => error.code === "KIMI_CONTEXT_COMPACTED",
+    (error) => error.code === "REVIEWER_CONTEXT_COMPACTED",
   );
 });
 

@@ -71,7 +71,7 @@ export async function runKimiNode({
         };
         parsed = validateKimiEnvelope(parsed, { mode, runId, acIds });
       } catch (error) {
-        if (error.code === "KIMI_CONTEXT_COMPACTED") {
+        if (["KIMI_CONTEXT_COMPACTED", "REVIEWER_CONTEXT_COMPACTED"].includes(error.code)) {
           throw typedError("CONTEXT_COMPACTED", error.message);
         }
         if (!schemaRepairUsed) {
@@ -97,7 +97,7 @@ export async function runKimiNode({
       if (["SCHEMA", "EVIDENCE", "STALE", "POLICY_VIOLATION", "PROTOCOL", "CONTEXT_COMPACTED", "CONTEXT_OVERSIZE"].includes(error.kind)) throw error;
       if (error.code === -32000) throw typedError("CONFIG", "Kimi authentication is required; run kimi login first.");
       if (isContextOversize(error)) throw typedError("CONTEXT_OVERSIZE", error.message);
-      if (isTransient(error) && transientRetries < 2) {
+      if (isTransientKimiError(error) && transientRetries < 2) {
         transientRetries += 1;
         await delay(500 * 2 ** (transientRetries - 1));
         continue;
@@ -108,6 +108,29 @@ export async function runKimiNode({
     }
   }
   throw typedError("RETRY_EXHAUSTED", "Kimi retry budget was exhausted.");
+}
+
+export async function probeKimiAvailability({ repoRoot, preflight, signal, onProgress = () => {} }) {
+  const client = new AcpClient({ command: preflight.binary, args: ["acp"], cwd: repoRoot, onProgress });
+  try {
+    const initialized = await client.initialize();
+    if (initialized.protocolVersion !== 1) throw typedError("PROTOCOL", `Unsupported ACP protocol version: ${initialized.protocolVersion}`);
+    const session = await client.newSession();
+    await configureSession(client, session, preflight.model_alias, "low");
+    const response = await client.prompt(
+      session.sessionId,
+      "This is a reviewer availability probe. Do not use tools. Reply with exactly READY.",
+      { signal },
+    );
+    if (response.text.trim() !== "READY") throw typedError("CONFIG", "Kimi availability probe did not return READY.");
+    return { status: "READY" };
+  } catch (error) {
+    if (signal?.aborted) throw typedError("CANCELLED", "Kimi availability probe was cancelled.");
+    if (error.code === -32000) throw typedError("CONFIG", "Kimi authentication is required; run kimi login first.");
+    throw error;
+  } finally {
+    await client.close();
+  }
 }
 
 export async function configureSession(client, session, modelAlias, effort) {
@@ -158,8 +181,10 @@ function validateExternalEvidence(evidence) {
   }
 }
 
-function isTransient(error) {
-  return /429|5\d\d|network|ECONN|EAI_AGAIN|temporar/i.test(`${error.code ?? ""} ${error.message ?? ""}`);
+export function isTransientKimiError(error) {
+  const value = `${error.code ?? ""} ${error.message ?? ""}`;
+  if (/quota (?:is )?exhausted|billing cycle quota|monthly quota|rolling quota/i.test(value)) return false;
+  return /429|5\d\d|network|ECONN|EAI_AGAIN|temporar/i.test(value);
 }
 
 function isContextOversize(error) {

@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  activateReviewerFailover,
   applyStateEvent,
+  clearReviewerFailover,
   createInitialState,
   deriveStatePath,
+  enableReviewerFallback,
   parseStateDocument,
   renderStateDocument,
 } from "../lib/state.mjs";
@@ -27,6 +30,37 @@ test("state rendering round-trips managed JSON and preserves user notes", () => 
   assert.deepEqual(parsed.state, state);
   assert.equal(parsed.userNotes, "Keep this note exactly.\n");
   assert.match(document, /implement-with-kimi:managed:start/);
+});
+
+test("version 1 state migrates in place without losing Kimi review evidence", () => {
+  const state = createInitialState({ specPath: "spec.md", specSha256: "f".repeat(64), runId: "legacy" });
+  state.state_schema_version = 1;
+  delete state.reviewer_policy;
+  delete state.reviewer_failover;
+  delete state.last_reviewer_review;
+  state.last_kimi_review = { mode: "rehydrate", status: "READY", raw_result_ref: "/tmp/result.json" };
+  const parsed = parseStateDocument(renderStateDocument(state, "legacy note\n"));
+  assert.equal(parsed.state.state_schema_version, 2);
+  assert.equal(parsed.state.run_id, "legacy");
+  assert.equal(parsed.state.last_reviewer_review.reviewer, "kimi");
+  assert.equal(parsed.state.last_reviewer_review.raw_result_ref, "/tmp/result.json");
+  assert.equal(parsed.userNotes, "legacy note\n");
+});
+
+test("reviewer fallback consent and sticky state are explicit and reversible", () => {
+  let state = createInitialState({ specPath: "spec.md", specSha256: "a".repeat(64), runId: "fallback" });
+  state = enableReviewerFallback(state, { now: "2026-08-07T00:00:00.000Z" });
+  assert.equal(state.reviewer_policy.repository_consent, true);
+  assert.equal(state.reviewer_policy.required_context_tokens, 1_048_576);
+  state = activateReviewerFailover(state, {
+    scope: "RUN",
+    reasonCode: "KIMI_QUOTA_EXHAUSTED",
+    message: "quota exhausted",
+    now: "2026-08-07T00:01:00.000Z",
+  });
+  assert.equal(state.reviewer_failover.active, true);
+  state = clearReviewerFailover(state, { now: "2026-08-07T00:02:00.000Z" });
+  assert.equal(state.reviewer_failover.active, false);
 });
 
 test("state events enforce the TDD transition order", () => {
