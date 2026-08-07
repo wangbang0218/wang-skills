@@ -50,6 +50,19 @@ test("rehydrate distinguishes expected unfinished work from a current workflow b
   assert.match(prompt, /cannot advance.*milestone/i);
 });
 
+test("selector prompt requires verbatim catalog SHA-256 evidence", () => {
+  const prompt = buildKimiPrompt({
+    mode: "selector",
+    runId: "run-selector",
+    specPath: "spec.md",
+    effort: "high",
+    contextPack: "<selector-budget />",
+  });
+  assert.match(prompt, /authoritative SHA-256/i);
+  assert.match(prompt, /copy.*catalog sha256 verbatim/i);
+  assert.match(prompt, /never leave it blank.*recompute.*invent/i);
+});
+
 test("JSON extraction tolerates a fenced repair response", () => {
   assert.deepEqual(extractJsonObject("```json\n{\"ok\":true}\n```"), { ok: true });
 });

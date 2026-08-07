@@ -93,6 +93,23 @@ export function renderContextPack({ selected, omitted = [], excluded = [], estim
   return `<implement-with-kimi-context>\n${JSON.stringify(manifest, null, 2)}${sections.join("\n")}\n</implement-with-kimi-context>`;
 }
 
+export function renderSelectorContext(catalogResult, spec, budgetTokens) {
+  const selectorCatalog = catalogResult.catalog.map(({
+    path: file,
+    sha256,
+    bytes,
+    estimated_tokens,
+    tier,
+    changed,
+  }) => ({ path: file, sha256, bytes, estimated_tokens, tier, changed }));
+  return [
+    `<selector-budget tokens="${budgetTokens}">`,
+    spec.text,
+    JSON.stringify(selectorCatalog, null, 2),
+    "</selector-budget>",
+  ].join("\n");
+}
+
 export function repositoryFingerprint(repoRoot) {
   const head = git(repoRoot, ["rev-parse", "HEAD"]);
   const diff = head.status === 0

@@ -15,6 +15,7 @@ import {
   getRepoRoot,
   gitBaseline,
   renderContextPack,
+  renderSelectorContext,
   repositoryFingerprint,
   selectRepositoryContext,
 } from "./lib/repository.mjs";
@@ -597,19 +598,6 @@ async function hashAuthorities(repoRoot, paths) {
   const result = {};
   for (const file of paths) result[file] = await sha256File(path.join(repoRoot, file));
   return result;
-}
-
-function renderSelectorContext(catalog, spec, budgetTokens) {
-  return [
-    `<selector-budget tokens="${budgetTokens}">`,
-    spec.text,
-    JSON.stringify(
-      catalog.catalog.map(({ path: file, bytes, estimated_tokens, tier, changed }) => ({ path: file, bytes, estimated_tokens, tier, changed })),
-      null,
-      2,
-    ),
-    "</selector-budget>",
-  ].join("\n");
 }
 
 function stateFileLocation(repoRoot, specPath) {
