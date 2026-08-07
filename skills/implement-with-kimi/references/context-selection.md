@@ -37,7 +37,7 @@ Use this fixed order:
 5. Other related implementation and tests
 6. Examples, history, benchmarks, fixtures, and snapshots
 
-If everything fits, include the full eligible repository. Otherwise send the file catalog, specification, sizes, tiers, and changed flags to a reviewer selector. Kimi keeps its low effort; Claude fallback always uses max effort. Union selections with deterministic mandatory paths and then apply the fixed budget. Selection uses paths, Git state, names, and lightweight text heuristics; it does not claim complete multi-language AST dependency analysis.
+If everything fits, include the full eligible repository. Otherwise send the file catalog, specification, hashes, sizes, tiers, and changed flags to a reviewer selector. The catalog is metadata-only and does not contain repository file bodies. The selector returns paths, keeps `findings` empty, and never infers or cites file contents from metadata; it selects uncertain files so the main reviewer receives their actual text. Kimi keeps its low effort; Claude fallback always uses max effort. Union selections with deterministic mandatory paths and then apply the fixed budget. Selection uses paths, Git state, names, and lightweight text heuristics; it does not claim complete multi-language AST dependency analysis.
 
 ## Completeness
 

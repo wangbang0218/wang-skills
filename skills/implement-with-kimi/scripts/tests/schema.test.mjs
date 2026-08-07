@@ -49,6 +49,31 @@ test("Kimi envelope status is computed rather than trusted", () => {
   assert.equal(result.status, "BLOCKED");
 });
 
+test("selector findings are rejected before unverified evidence can be accepted", () => {
+  const input = envelope([{
+    id: "SEL-001",
+    severity: "INFO",
+    title: "Imagined file contents",
+    explanation: "The metadata-only catalog does not support this claim.",
+    evidence: [{
+      path: "lib/example.dart",
+      sha256: "a".repeat(64),
+      line_start: 1,
+      line_end: 1,
+      excerpt: "export 'src/example.dart';",
+      claim: "Invented from a conventional package layout.",
+    }],
+  }]);
+  input.mode = "selector";
+
+  assert.throws(
+    () => validateKimiEnvelope(input, { mode: "selector", runId: "run-1" }),
+    /Selector output findings must be empty.*metadata-only/,
+  );
+  input.findings = [];
+  assert.doesNotThrow(() => validateKimiEnvelope(input, { mode: "selector", runId: "run-1" }));
+});
+
 test("capsule keeps every blocking finding and reports folded warnings", () => {
   const warnings = Array.from({ length: 200 }, (_, index) => ({
     id: `W-${index}`,

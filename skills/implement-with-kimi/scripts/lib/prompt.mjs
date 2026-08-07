@@ -49,9 +49,13 @@ export function buildReviewerPrompt({ mode, runId, specPath, contextPack, questi
     "Each ac_coverage item requires ac_id (AC-NNN), status (COVERED|PARTIAL|MISSING|EXCEPTION), and test_refs[]. Include every acceptance criterion declared by the specification.",
     "context requires completeness (FULL|PARTIAL), omissions, compacted. Set compacted=true if your own session context was compacted.",
     "external_research requires status (NOT_REQUESTED|READY|WARNING|BLOCKED) and sources[].",
-    mode === "selector"
-      ? "Also return selected_paths as repository-relative paths. Do not omit mandatory paths. Each selector catalog entry includes the authoritative SHA-256 for that repository file. When citing local evidence, copy the matching catalog sha256 verbatim; never leave it blank, recompute it, invent it, or copy it from another entry."
-      : "",
+    ...(mode === "selector" ? [
+      "Also return selected_paths as repository-relative paths. Do not omit mandatory paths.",
+      "The selector catalog is metadata-only. Except for the separately included module specification text, it contains no repository file contents.",
+      "Never infer, summarize, quote, or claim a repository file's contents from its path, SHA-256, byte size, token estimate, tier, or changed flag. SHA-256 identifies a catalog entry; it does not reveal its contents.",
+      "Selection is not review. Set findings to [] and return no evidence. Keep the summary, AC coverage, and next actions limited to the module specification and selection rationale supported by catalog metadata.",
+      "If a file might be relevant or its contents must be inspected, add its path to selected_paths so the subsequent main reviewer receives the actual text; do not describe imagined contents.",
+    ] : []),
     contextPack,
   ].filter(Boolean).join("\n\n");
 }

@@ -50,7 +50,7 @@ test("rehydrate distinguishes expected unfinished work from a current workflow b
   assert.match(prompt, /cannot advance.*milestone/i);
 });
 
-test("selector prompt requires verbatim catalog SHA-256 evidence", () => {
+test("selector prompt forbids content claims from metadata-only catalog entries", () => {
   const prompt = buildKimiPrompt({
     mode: "selector",
     runId: "run-selector",
@@ -58,9 +58,12 @@ test("selector prompt requires verbatim catalog SHA-256 evidence", () => {
     effort: "high",
     contextPack: "<selector-budget />",
   });
-  assert.match(prompt, /authoritative SHA-256/i);
-  assert.match(prompt, /copy.*catalog sha256 verbatim/i);
-  assert.match(prompt, /never leave it blank.*recompute.*invent/i);
+  assert.match(prompt, /selector catalog is metadata-only/i);
+  assert.match(prompt, /contains no repository file contents/i);
+  assert.match(prompt, /never infer.*claim.*contents.*path.*SHA-256.*byte size.*tier.*changed flag/i);
+  assert.match(prompt, /SHA-256 identifies.*does not reveal.*contents/i);
+  assert.match(prompt, /set findings to \[\].*no evidence/i);
+  assert.match(prompt, /add its path to selected_paths.*actual text.*do not describe imagined contents/i);
 });
 
 test("JSON extraction tolerates a fenced repair response", () => {

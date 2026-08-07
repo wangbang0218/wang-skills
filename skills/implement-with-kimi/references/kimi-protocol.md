@@ -65,6 +65,8 @@ Require one JSON object with `schema_version: 1`, English keys, and Chinese expl
 
 Compute the top status locally from findings with precedence `CONFLICT > BLOCKED > WARNING > READY`; do not trust a model-supplied top status. Finding severity is relative to the requested mode and its next legal transition: `BLOCKED` means the current gate cannot safely pass, not merely that work required by a later gate remains. In `review-tests`, valid expected Red caused by missing production behavior is success evidence and cannot itself be `BLOCKED`; in `rehydrate`, do not perpetuate that expected gap from persisted state. If Kimi reports its own context compaction, discard the response and retry once with a smaller pack.
 
+In `selector` mode, the catalog is metadata-only: it includes path, SHA-256, size, token estimate, tier, and changed state, but no repository file body. Require `findings: []` and no evidence. Never infer content from catalog metadata; select a potentially relevant path so the main reviewer can receive and inspect its actual text.
+
 Keep the full validated JSON in an OS temporary diagnostic directory. Return a maximum 32 KiB capsule to Codex containing every conflict/blocker, important warnings, AC summary, next actions, omissions, and a raw reference. Retrieve details through `inspect --finding`.
 
 ## Evidence

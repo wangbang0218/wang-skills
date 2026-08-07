@@ -48,6 +48,80 @@ function envelope({ runId, sha256, excerpt, evidencePath = "source.txt" }) {
   };
 }
 
+function selectorEnvelope({ runId, findings }) {
+  return {
+    schema_version: 1,
+    mode: "selector",
+    run_id: runId,
+    summary: "Selection complete.",
+    findings,
+    ac_coverage: [],
+    next_actions: [],
+    external_research: { status: "NOT_REQUESTED", sources: [] },
+    context: { completeness: "FULL", omissions: [], compacted: false },
+    selected_paths: ["source.txt"],
+  };
+}
+
+test("selector repairs a hallucinated finding before evidence validation", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "iwk-selector-runner-"));
+  const harness = await mkdtemp(path.join(tmpdir(), "iwk-selector-harness-"));
+  spawnSync("git", ["init", "-q"], { cwd: root });
+  await writeFile(path.join(root, "source.txt"), "/// Reserved placeholder.\nlibrary;\n", "utf8");
+  const sha256 = await sha256File(path.join(root, "source.txt"));
+  const runId = "run-selector-hallucination";
+  const hallucinated = selectorEnvelope({
+    runId,
+    findings: [{
+      id: "SEL-001",
+      severity: "INFO",
+      title: "Imagined source export",
+      explanation: "The catalog metadata does not contain this source text.",
+      evidence: [{
+        path: "source.txt",
+        sha256,
+        line_start: 1,
+        line_end: 1,
+        excerpt: "export 'src/source.dart';",
+        claim: "Invented from a conventional package layout.",
+      }],
+    }],
+  });
+  const corrected = selectorEnvelope({ runId, findings: [] });
+  const counter = path.join(harness, "attempt.txt");
+  const wrapper = path.join(harness, "fake-kimi");
+  await writeFile(wrapper, `#!/usr/bin/env node
+import { readFileSync, writeFileSync } from "node:fs";
+let attempt = 0;
+try { attempt = Number(readFileSync(${JSON.stringify(counter)}, "utf8")); } catch {}
+writeFileSync(${JSON.stringify(counter)}, String(attempt + 1));
+process.env.FAKE_RESPONSE_TEXT = attempt === 0
+  ? ${JSON.stringify(JSON.stringify(hallucinated))}
+  : ${JSON.stringify(JSON.stringify(corrected))};
+await import(${JSON.stringify(pathToFileURL(fakeAgent).href)});
+`, "utf8");
+  await chmod(wrapper, 0o755);
+
+  const result = await runKimiNode({
+    repoRoot: root,
+    mode: "selector",
+    runId,
+    specPath: "spec.md",
+    contextPack: "<selector-budget />",
+    acIds: [],
+    preflight: {
+      binary: wrapper,
+      model_alias: "kimi-code/k3",
+      model: "k3",
+      max_context_size: 1_048_576,
+    },
+  });
+
+  assert.equal(result.envelope.attempts, 2);
+  assert.deepEqual(result.envelope.findings, []);
+  assert.deepEqual(result.envelope.selected_paths, ["source.txt"]);
+});
+
 test("runner canonicalizes omitted source indentation and does not Schema-retry material evidence failures", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "iwk-runner-"));
   spawnSync("git", ["init", "-q"], { cwd: root });

@@ -21,6 +21,9 @@ export function validateReviewerEnvelope(input, { mode, runId, acIds } = {}) {
   if (runId && input.run_id !== runId) throw new Error("Reviewer output run_id does not match the active run.");
   if (typeof input.summary !== "string" || !input.summary) throw new Error("Reviewer output summary must be a non-empty string.");
   if (!Array.isArray(input.findings)) throw new Error("Reviewer output findings must be an array.");
+  if (input.mode === "selector" && input.findings.length !== 0) {
+    throw new Error("Selector output findings must be empty because the selector catalog is metadata-only.");
+  }
 
   const findings = input.findings.map((finding, index) => validateFinding(finding, index));
   assertUnique(findings.map((finding) => finding.id), "finding ids");
