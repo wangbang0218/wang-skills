@@ -7,6 +7,9 @@ const https = require("node:https");
 const { URL, URLSearchParams } = require("node:url");
 
 const SUCCESS_CODE = "000000";
+const SEARCH_PAGE_SIZE = 50;
+const MAX_SEARCH_PAGES = 1000;
+const CANDIDATE_DISPLAY_LIMIT = 10;
 
 const METHODS = ["POST", "GET", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH"];
 const PROTOCOLS = ["HTTP", "HTTPS", "WS", "WSS", "TCP", "UDP", "RPC"];
@@ -73,7 +76,7 @@ class CookieJar {
 }
 
 function usage() {
-  return `usage: fetch_eolinker_api.js [--json-only | --markdown-only] [--raw] [--output OUTPUT] url
+  return `usage: fetch_eolinker_api.js [--json-only | --markdown-only] [--raw] [--api-path API_PATH [--method METHOD]] [--output OUTPUT] url
 
 Fetch AI-readable API information from an Eolinker share URL.
 
@@ -85,6 +88,8 @@ options:
   --json-only      Print only normalized JSON.
   --markdown-only  Print only the Markdown summary.
   --raw            Include redacted raw Eolinker responses in the JSON.
+  --api-path PATH  Find an exact API path from a project share list URL.
+  --method METHOD  Disambiguate an API path by HTTP method.
   --output OUTPUT  Write output to this file instead of stdout.
 `;
 }
@@ -94,6 +99,8 @@ function parseArgs(argv) {
     jsonOnly: false,
     markdownOnly: false,
     raw: false,
+    apiPath: null,
+    method: null,
     output: null,
     url: null,
   };
@@ -116,6 +123,20 @@ function parseArgs(argv) {
       args.raw = true;
       continue;
     }
+    if (arg === "--api-path") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) throw new EolinkerError("--api-path requires a path.");
+      args.apiPath = value.trim();
+      index += 1;
+      continue;
+    }
+    if (arg === "--method") {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) throw new EolinkerError("--method requires an HTTP method.");
+      args.method = value.toUpperCase();
+      index += 1;
+      continue;
+    }
     if (arg === "--output") {
       const value = argv[index + 1];
       if (!value) throw new EolinkerError("--output requires a path.");
@@ -134,6 +155,15 @@ function parseArgs(argv) {
 
   if (args.jsonOnly && args.markdownOnly) {
     throw new EolinkerError("--json-only and --markdown-only are mutually exclusive.");
+  }
+  if (args.apiPath === "") {
+    throw new EolinkerError("--api-path requires a non-empty path.");
+  }
+  if (args.method && !args.apiPath) {
+    throw new EolinkerError("--method requires --api-path.");
+  }
+  if (args.method && !METHODS.includes(args.method)) {
+    throw new EolinkerError(`Unsupported --method ${args.method}. Expected one of: ${METHODS.join(", ")}.`);
   }
   if (!args.url) {
     throw new EolinkerError("Missing Eolinker share URL.\n\n" + usage().trimEnd());
@@ -222,8 +252,8 @@ function parseShareUrl(rawUrl) {
   const params = collectUrlParams(rawUrl);
   const shareCode = valueAt(params, "shareCode");
   const apiID = valueAt(params, "apiID");
-  if (!shareCode || !apiID) {
-    throw new EolinkerError("Missing required shareCode or apiID in the Eolinker URL.");
+  if (!shareCode) {
+    throw new EolinkerError("Missing required shareCode in the Eolinker URL.");
   }
 
   let prefix = "";
@@ -248,6 +278,22 @@ function parseShareUrl(rawUrl) {
   };
 }
 
+function buildDetailUrl(parsed, target, shareID) {
+  const url = new URL(parsed.referer);
+  const params = new URLSearchParams({
+    groupID: String(target.groupID),
+    apiID: String(target.apiID),
+    shareCode: parsed.shareCode,
+    shareType: parsed.shareType,
+  });
+  if (shareID) params.set("shareID", String(shareID));
+  if (parsed.origin) params.set("origin", parsed.origin);
+  const projectHashKey = target.projectHashKey || parsed.projectHashKey;
+  if (projectHashKey) params.set("projectHashKey", projectHashKey);
+  url.hash = `/share/project/api/detail?${params}`;
+  return url.toString();
+}
+
 function requestText(targetUrl, options, body) {
   return new Promise((resolve, reject) => {
     const url = new URL(targetUrl);
@@ -265,7 +311,7 @@ function requestText(targetUrl, options, body) {
         response.on("end", () => {
           const text = Buffer.concat(chunks).toString("utf8");
           if (response.statusCode < 200 || response.statusCode >= 300) {
-            reject(new EolinkerError(`HTTP ${response.statusCode} while calling ${options.operate}: ${text.slice(0, 300)}`));
+            reject(new EolinkerError(`HTTP ${response.statusCode} while calling ${options.operate}; response body omitted (${Buffer.byteLength(text)} bytes).`));
             return;
           }
           resolve({
@@ -317,7 +363,7 @@ async function postForm(cookieJar, parsed, operate, data) {
   try {
     payload = JSON.parse(response.body);
   } catch (error) {
-    throw new EolinkerError(`Non-JSON response from ${operate}: ${response.body.slice(0, 300)}`);
+    throw new EolinkerError(`Non-JSON response from ${operate}; response body omitted (${Buffer.byteLength(response.body)} bytes).`);
   }
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new EolinkerError(`Unexpected response from ${operate}: ${typeof payload}`);
@@ -330,11 +376,160 @@ function requireSuccess(operation, payload) {
   if (code === SUCCESS_CODE) return;
   const hints = {
     200303: "Share unavailable, missing parameters, or request body was not form-urlencoded.",
-    400402: "Share token/cookie validation failed; rerun getProjectInfo and getApi with one cookie jar.",
+    400402: "Share token/cookie validation failed; rerun the full share flow with one cookie jar.",
   };
   const visible = redactData(payload);
   delete visible.apiInfo;
   throw new EolinkerError(`${operation} failed with statusCode ${code}. ${hints[code] || "Eolinker returned a non-success status."} Response: ${JSON.stringify(visible)}`);
+}
+
+function parseItemCount(value) {
+  const text = typeof value === "string" || typeof value === "number" ? String(value).trim() : "";
+  if (!/^\d+$/.test(text)) {
+    throw new EolinkerError(`searchApi returned invalid itemNum: ${JSON.stringify(value)}.`);
+  }
+  const count = Number(text);
+  if (!Number.isInteger(count) || count < 0) {
+    throw new EolinkerError(`searchApi returned invalid itemNum: ${JSON.stringify(value)}.`);
+  }
+  return count;
+}
+
+function normalizeSearchCandidate(item, page, index) {
+  if (!isPlainObject(item)) {
+    throw new EolinkerError(`searchApi page ${page} apiList[${index}] is not an object.`);
+  }
+  if (item.apiID === undefined || item.apiID === null || String(item.apiID) === "") {
+    throw new EolinkerError(`searchApi page ${page} apiList[${index}] is missing apiID.`);
+  }
+  if (typeof item.apiURI !== "string") {
+    throw new EolinkerError(`searchApi page ${page} apiList[${index}] is missing apiURI.`);
+  }
+  if (item.groupID === undefined || item.groupID === null || String(item.groupID) === "") {
+    throw new EolinkerError(`searchApi page ${page} apiList[${index}] is missing groupID.`);
+  }
+  const methodText = typeof item.apiRequestType === "string" || typeof item.apiRequestType === "number"
+    ? String(item.apiRequestType).trim()
+    : "";
+  if (!/^\d+$/.test(methodText)) {
+    throw new EolinkerError(`searchApi page ${page} apiList[${index}] has invalid apiRequestType.`);
+  }
+  const methodIndex = Number(methodText);
+  const method = Number.isInteger(methodIndex) ? METHODS[methodIndex] : null;
+  if (!method) throw new EolinkerError(`searchApi page ${page} apiList[${index}] has invalid apiRequestType.`);
+  return {
+    apiID: String(item.apiID),
+    apiName: String(item.apiName || ""),
+    apiURI: item.apiURI,
+    groupID: String(item.groupID),
+    groupName: String(item.groupName || ""),
+    method,
+    projectHashKey: item.projectHashKey ? String(item.projectHashKey) : null,
+  };
+}
+
+function candidateListText(candidates) {
+  if (!Array.isArray(candidates) || candidates.length === 0) return "";
+  const lines = candidates.slice(0, CANDIDATE_DISPLAY_LIMIT).map((candidate) => {
+    const name = candidate.apiName.replace(/\s+/g, " ").trim() || "-";
+    const group = candidate.groupName.replace(/\s+/g, " ").trim() || "-";
+    return `- ${candidate.method} ${candidate.apiURI} | ${name} | apiID=${candidate.apiID} groupID=${candidate.groupID} group=${group}`;
+  });
+  if (candidates.length > CANDIDATE_DISPLAY_LIMIT) {
+    lines.push(`- ... ${candidates.length - CANDIDATE_DISPLAY_LIMIT} more candidate(s)`);
+  }
+  return `\nCandidates:\n${lines.join("\n")}`;
+}
+
+async function searchApiCandidates(cookieJar, parsed, session, apiPath) {
+  const candidates = [];
+  const rawPages = [];
+  const seenPageSignatures = new Set();
+  const seenCandidateKeys = new Set();
+  let expectedTotal = null;
+
+  for (let page = 1; page <= MAX_SEARCH_PAGES; page += 1) {
+    const payload = await postForm(cookieJar, parsed, "searchApi", {
+      shareCode: parsed.shareCode,
+      shareID: session.shareID,
+      groupID: "-1",
+      shareToken: session.shareToken,
+      shareType: parsed.shareType,
+      tips: apiPath,
+      keyword: apiPath,
+      orderBy: 3,
+      asc: 0,
+      pageSize: SEARCH_PAGE_SIZE,
+      page,
+    });
+    requireSuccess("searchApi", payload);
+    if (!Array.isArray(payload.apiList)) {
+      throw new EolinkerError(`searchApi page ${page} did not include an apiList array.`);
+    }
+
+    const itemNum = parseItemCount(payload.itemNum);
+    if (expectedTotal === null) expectedTotal = itemNum;
+    if (itemNum !== expectedTotal) {
+      throw new EolinkerError(`searchApi itemNum changed from ${expectedTotal} to ${itemNum} on page ${page}.`);
+    }
+
+    const pageCandidates = payload.apiList.map((item, index) => normalizeSearchCandidate(item, page, index));
+    const signature = pageCandidates.map((candidate) => `${candidate.apiID}:${candidate.groupID}`).join("|");
+    if (pageCandidates.length > 0 && seenPageSignatures.has(signature)) {
+      throw new EolinkerError(`searchApi repeated page data on page ${page}; pagination did not advance.`);
+    }
+    seenPageSignatures.add(signature);
+    for (const candidate of pageCandidates) {
+      const key = `${candidate.apiID}:${candidate.groupID}`;
+      if (seenCandidateKeys.has(key)) {
+        throw new EolinkerError(`searchApi repeated apiID ${candidate.apiID} on page ${page}; pagination did not advance.`);
+      }
+      seenCandidateKeys.add(key);
+    }
+
+    if (candidates.length + pageCandidates.length > expectedTotal) {
+      throw new EolinkerError(`searchApi returned more entries than itemNum ${expectedTotal}.`);
+    }
+    candidates.push(...pageCandidates);
+    rawPages.push(payload);
+
+    if (candidates.length === expectedTotal) {
+      return { candidates, rawPages };
+    }
+    if (pageCandidates.length === 0) {
+      throw new EolinkerError(`searchApi returned an empty page ${page} before all ${expectedTotal} entries were received.`);
+    }
+  }
+
+  throw new EolinkerError(`searchApi exceeded ${MAX_SEARCH_PAGES} pages before all results were received.`);
+}
+
+async function resolveTargetByPath(cookieJar, parsed, session, apiPath, method) {
+  const { candidates, rawPages } = await searchApiCandidates(cookieJar, parsed, session, apiPath);
+  const exactPathMatches = candidates.filter((candidate) => candidate.apiURI === apiPath);
+  if (exactPathMatches.length === 0) {
+    throw new EolinkerError(`No exact API match for path "${apiPath}".${candidateListText(candidates)}`);
+  }
+
+  let matches = exactPathMatches;
+  if (method) {
+    matches = exactPathMatches.filter((candidate) => candidate.method === method);
+    if (matches.length === 0) {
+      throw new EolinkerError(`No API matches path "${apiPath}" and method ${method}.${candidateListText(exactPathMatches)}`);
+    }
+  } else if (matches.length > 1) {
+    throw new EolinkerError(`Multiple APIs match path "${apiPath}". Pass --method to disambiguate.${candidateListText(matches)}`);
+  }
+
+  if (matches.length > 1) {
+    throw new EolinkerError(`Multiple APIs match path "${apiPath}" and method ${method}.${candidateListText(matches)}`);
+  }
+
+  const target = matches[0];
+  if (parsed.apiID && String(parsed.apiID) !== target.apiID) {
+    throw new EolinkerError(`Resolved apiID ${target.apiID} does not match apiID ${parsed.apiID} from the URL.`);
+  }
+  return { target, rawPages };
 }
 
 function enumLookup(values, index, defaultValue = "") {
@@ -494,7 +689,8 @@ function normalizeResponseBody(response, dataStructures) {
   return body;
 }
 
-function normalize(parsed, projectInfo, apiPayload, includeRaw) {
+function normalize(parsed, projectInfo, apiPayload, options) {
+  const { includeRaw, target, detailUrl, rawSearchPages } = options;
   const apiInfo = apiPayload.apiInfo;
   if (!apiInfo || typeof apiInfo !== "object" || Array.isArray(apiInfo)) {
     throw new EolinkerError("getApi response did not include apiInfo.");
@@ -508,8 +704,8 @@ function normalize(parsed, projectInfo, apiPayload, includeRaw) {
       host: parsed.baseUrl,
       shareCode: parsed.shareCode,
       shareID: projectInfo.shareID || parsed.shareID,
-      apiID: parsed.apiID,
-      groupID: baseInfo.groupID || parsed.groupID,
+      apiID: target.apiID,
+      groupID: baseInfo.groupID || target.groupID,
       shareType: parsed.shareType,
     },
     project: {
@@ -541,7 +737,12 @@ function normalize(parsed, projectInfo, apiPayload, includeRaw) {
       ? apiInfo.resultInfo.filter((item) => item && typeof item === "object").map((item) => normalizeResponseBody(item, dataStructures))
       : [],
   };
-  if (includeRaw) normalized.raw = redactData({ projectInfo, api: apiPayload });
+  if (detailUrl) normalized.source.detailUrl = detailUrl;
+  if (includeRaw) {
+    const raw = { projectInfo, api: apiPayload };
+    if (rawSearchPages) raw.search = rawSearchPages;
+    normalized.raw = redactData(raw);
+  }
   return normalized;
 }
 
@@ -563,7 +764,7 @@ function formatParamLines(params, indent = 0) {
 }
 
 function markdownSummary(data) {
-  const { project, api, request, responses } = data;
+  const { source, project, api, request, responses } = data;
   const lines = [
     `## ${api.name || "Eolinker API"}`,
     "",
@@ -573,6 +774,7 @@ function markdownSummary(data) {
     `Status: ${api.status || "-"}`,
     `Request body: ${`${api.requestBodyType || "-"} ${api.requestBodyOuter || ""}`.trim()}`,
   ];
+  if (source.detailUrl) lines.push(`Detail: ${source.detailUrl}`);
 
   for (const [heading, params] of [
     ["Headers", request.headers || []],
@@ -601,7 +803,7 @@ function markdownSummary(data) {
   return lines.join("\n").trim() + "\n";
 }
 
-async function fetchApi(parsed, includeRaw) {
+async function openShareSession(parsed) {
   const cookieJar = new CookieJar();
   const projectInfo = await postForm(cookieJar, parsed, "getProjectInfo", {
     shareCode: parsed.shareCode,
@@ -619,19 +821,60 @@ async function fetchApi(parsed, includeRaw) {
     throw new EolinkerError("getProjectInfo did not return shareToken/shareID and the URL did not provide a usable fallback.");
   }
 
+  return { cookieJar, projectInfo, shareToken, shareID };
+}
+
+async function fetchApi(parsed, args) {
+  const session = await openShareSession(parsed);
+  let target = {
+    apiID: String(parsed.apiID),
+    groupID: String(parsed.groupID),
+    method: null,
+    projectHashKey: parsed.projectHashKey,
+  };
+  let rawSearchPages = null;
+  let detailUrl = null;
+
+  if (args.apiPath) {
+    const resolved = await resolveTargetByPath(
+      session.cookieJar,
+      parsed,
+      session,
+      args.apiPath,
+      args.method,
+    );
+    target = resolved.target;
+    rawSearchPages = resolved.rawPages;
+    detailUrl = buildDetailUrl(parsed, target, session.shareID);
+  }
+
   const apiRequest = {
     shareCode: parsed.shareCode,
-    apiID: parsed.apiID,
-    shareID,
-    groupID: parsed.groupID,
-    shareToken,
+    apiID: target.apiID,
+    shareID: session.shareID,
+    groupID: target.groupID,
+    shareToken: session.shareToken,
     shareType: parsed.shareType,
   };
-  if (parsed.projectHashKey) apiRequest.projectHashKey = parsed.projectHashKey;
+  const projectHashKey = target.projectHashKey || parsed.projectHashKey;
+  if (projectHashKey) apiRequest.projectHashKey = projectHashKey;
 
-  const apiPayload = await postForm(cookieJar, parsed, "getApi", apiRequest);
+  const apiPayload = await postForm(session.cookieJar, parsed, "getApi", apiRequest);
   requireSuccess("getApi", apiPayload);
-  return normalize(parsed, projectInfo, apiPayload, includeRaw);
+  const normalized = normalize(parsed, session.projectInfo, apiPayload, {
+    includeRaw: args.raw,
+    target,
+    detailUrl,
+    rawSearchPages,
+  });
+
+  if (args.apiPath && normalized.api.path !== args.apiPath) {
+    throw new EolinkerError(`getApi returned path "${normalized.api.path}" after resolving "${args.apiPath}".`);
+  }
+  if (args.apiPath && normalized.api.method !== target.method) {
+    throw new EolinkerError(`getApi returned method ${normalized.api.method || "-"} after resolving ${target.method}.`);
+  }
+  return normalized;
 }
 
 function renderOutput(data, args) {
@@ -645,7 +888,10 @@ function renderOutput(data, args) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const parsed = parseShareUrl(args.url);
-  const data = await fetchApi(parsed, args.raw);
+  if (!args.apiPath && !parsed.apiID) {
+    throw new EolinkerError("Missing apiID in the Eolinker URL. Pass --api-path to search a project share.");
+  }
+  const data = await fetchApi(parsed, args);
   const output = renderOutput(data, args);
   if (args.output) {
     fs.writeFileSync(args.output, output, "utf8");

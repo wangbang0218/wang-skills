@@ -55,9 +55,9 @@ npx skills add wangbang0218/wang-skills \
 
 ### `eolinker-api-doc`
 
-从 Eolinker API 文档分享链接中提取适合 AI 阅读的接口信息，包括请求方法、路径、请求参数、响应字段和结构化接口契约。
+从 Eolinker API 详情分享链接提取接口信息，或使用精确 API 路径在项目分享列表中定位接口并获取完整契约，包括请求方法、路径、请求参数和响应字段。
 
-安装后，将 Eolinker 分享链接交给 Agent，并要求其提取或分析接口文档即可。
+安装后，可以直接将详情分享链接交给 Agent；也可以同时提供项目 API 列表分享链接与目标路径，例如 `/digit/mdr/collection/v1/create`。同一路径存在多个请求方法时，再提供 GET、POST 等方法进行消歧。
 
 ## 本地开发
 
