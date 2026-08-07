@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { estimateTokens } from "./context-pack.mjs";
 
 const ALLOWED_TOOL_KINDS = new Set(["read", "search", "fetch", "think"]);
-const ALLOWED_OTHER_TOOL_TITLES = new Set(["WebSearch", "FetchURL"]);
 
 export class AcpClient {
   constructor({
@@ -44,6 +43,7 @@ export class AcpClient {
     this.prohibitedAutoTool = null;
     this.toolCalls = new Map();
     this.deniedToolCalls = new Set();
+    this.provisionalToolCalls = new Map();
   }
 
   async initialize() {
@@ -91,6 +91,11 @@ export class AcpClient {
     }
     try {
       const result = await promise;
+      if (!this.prohibitedAutoTool && this.provisionalToolCalls.size > 0) {
+        const [toolCallId, toolCall] = this.provisionalToolCalls.entries().next().value;
+        this.provisionalToolCalls.delete(toolCallId);
+        this.#denyAutoTool(toolCall, "Tool did not provide enough structured ACP fields before the prompt ended.", false);
+      }
       if (this.prohibitedAutoTool) {
         const error = new Error(`Kimi requested prohibited auto-approved tool: ${this.prohibitedAutoTool}`);
         error.kind = "POLICY_VIOLATION";
@@ -230,19 +235,51 @@ export class AcpClient {
     const toolCallId = toolCall.toolCallId ?? toolCall.tool_call_id ?? "unknown";
     if (this.deniedToolCalls.has(toolCallId)) return;
     const kind = toolCall.kind ?? "other";
-    const title = String(toolCall.title ?? "");
     const outsideRepositoryRead = this.#hasOutsideRepositoryRead(toolCall);
     const permissionControlled = ["edit", "delete", "move", "execute"].includes(kind);
-    const allowedNamedOther = kind === "other" && ALLOWED_OTHER_TOOL_TITLES.has(title);
-    if (((!ALLOWED_TOOL_KINDS.has(kind) && !allowedNamedOther) || outsideRepositoryRead) && !permissionControlled) {
+    const allowed = ALLOWED_TOOL_KINDS.has(kind) || this.#isStructuredWebFetch(toolCall);
+    if (allowed && !outsideRepositoryRead) {
+      this.provisionalToolCalls.delete(toolCallId);
+      return;
+    }
+    const incompleteOther = kind === "other" && toolCall.rawInput === undefined;
+    const continuingProvisional = this.provisionalToolCalls.has(toolCallId) &&
+      !["completed", "failed", "cancelled"].includes(toolCall.status);
+    if (incompleteOther && (toolCall.status === "pending" || continuingProvisional)) {
+      this.provisionalToolCalls.set(toolCallId, toolCall);
+      return;
+    }
+    this.provisionalToolCalls.delete(toolCallId);
+    if ((!allowed || outsideRepositoryRead) && !permissionControlled) {
       const reason = outsideRepositoryRead
         ? "Read/search location is outside the repository."
         : "Tool is outside the read/search/fetch policy.";
-      this.deniedToolCalls.add(toolCallId);
-      this.#policyViolation({ kind, method: title || "tool_call", reason });
-      this.prohibitedAutoTool = title || kind;
-      if (this.currentPrompt) this.cancel(this.currentPrompt.sessionId, "Prohibited auto-approved Kimi tool");
+      this.#denyAutoTool(toolCall, reason);
     }
+  }
+
+  #isStructuredWebFetch(toolCall) {
+    if (toolCall.kind !== "other") return false;
+    const input = toolCall.rawInput;
+    if (!input || typeof input !== "object" || Array.isArray(input)) return false;
+    const keys = Object.keys(input);
+    if (keys.length !== 1 || keys[0] !== "url" || typeof input.url !== "string") return false;
+    try {
+      const url = new URL(input.url);
+      return ["http:", "https:"].includes(url.protocol) && Boolean(url.hostname) && !url.username && !url.password;
+    } catch {
+      return false;
+    }
+  }
+
+  #denyAutoTool(toolCall, reason, cancel = true) {
+    const toolCallId = toolCall.toolCallId ?? toolCall.tool_call_id ?? "unknown";
+    const kind = toolCall.kind ?? "other";
+    const title = String(toolCall.title ?? "");
+    this.deniedToolCalls.add(toolCallId);
+    this.#policyViolation({ kind, method: title || "tool_call", reason });
+    this.prohibitedAutoTool = title || kind;
+    if (cancel && this.currentPrompt) this.cancel(this.currentPrompt.sessionId, "Prohibited auto-approved Kimi tool");
   }
 
   #hasOutsideRepositoryRead(toolCall) {
@@ -326,10 +363,9 @@ export class AcpClient {
   #permissionResult(params) {
     const toolCall = params?.toolCall ?? {};
     const kind = toolCall.kind ?? "other";
-    const title = String(toolCall.title ?? "");
     const outsideRepositoryRead = this.#hasOutsideRepositoryRead(toolCall);
     const allowed = !outsideRepositoryRead &&
-      (ALLOWED_TOOL_KINDS.has(kind) || (kind === "other" && ALLOWED_OTHER_TOOL_TITLES.has(title)));
+      (ALLOWED_TOOL_KINDS.has(kind) || this.#isStructuredWebFetch(toolCall));
     const desiredKinds = allowed ? ["allow_once", "allow_always"] : ["reject_once", "reject_always"];
     const option = params?.options?.find((item) => desiredKinds.includes(item.kind));
     if (!allowed) {

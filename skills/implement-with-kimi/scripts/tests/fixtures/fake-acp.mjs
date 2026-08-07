@@ -54,6 +54,29 @@ input.on("line", (line) => {
       send({ id: message.id, result: { stopReason: "end_turn" } });
       return;
     }
+    if (process.env.FAKE_AUTO_TOOL_UPDATES) {
+      const updates = JSON.parse(process.env.FAKE_AUTO_TOOL_UPDATES);
+      for (const update of updates) {
+        send({
+          method: "session/update",
+          params: { sessionId: "session-1", update },
+        });
+      }
+      setTimeout(() => {
+        send({
+          method: "session/update",
+          params: {
+            sessionId: "session-1",
+            update: {
+              sessionUpdate: "agent_message_chunk",
+              content: { type: "text", text: '{"ok":true}' },
+            },
+          },
+        });
+        send({ id: message.id, result: { stopReason: "end_turn" } });
+      }, promptDelay);
+      return;
+    }
     if (process.env.FAKE_AUTO_TOOL_TITLE) {
       const rawInput = process.env.FAKE_AUTO_TOOL_RAW_INPUT
         ? JSON.parse(process.env.FAKE_AUTO_TOOL_RAW_INPUT)

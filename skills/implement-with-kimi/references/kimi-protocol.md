@@ -43,7 +43,7 @@ Reject or cancel:
 - media/binary reads
 - background, cron, or project-state mutation
 
-Give the first permission-controlled violation a denial/correction. Cancel on repeated violations. Because some Kimi tools are auto-approved, inspect streamed `tool_call` messages and cancel immediately when an auto-approved call is outside the allowed read/search/fetch set. Classify calls from structured ACP fields (`kind`, `locations`, and `rawInput.path`), never from keywords in the free-form `title`; when ACP omits `locations`, use `rawInput.path` for repository-boundary checks. Treat ACP guards as a runtime boundary plus prompt constraint, not as a general OS sandbox.
+Give the first permission-controlled violation a denial/correction. Cancel on repeated violations. Because some Kimi tools are auto-approved, inspect streamed `tool_call` messages and cancel immediately when an auto-approved call is outside the allowed read/search/fetch set. Classify calls from structured ACP fields, never from keywords in the free-form `title`: use `kind` for standard read/search/fetch calls, `locations` and `rawInput.path` for repository-boundary checks, and the exact read-only `{ url: <http(s) URL> }` `rawInput` shape for Kimi ACP versions that temporarily report `FetchURL` as `kind=other`. A lazy `kind=other`, `status=pending` call with no `rawInput` is provisional only; require a later structured update before the prompt ends and reject it otherwise. Treat ACP guards as a runtime boundary plus prompt constraint, not as a general OS sandbox.
 
 ## Result envelope
 

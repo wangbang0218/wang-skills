@@ -37,27 +37,131 @@ test("ACP client negotiates, selects model/effort, streams JSON, and denies writ
   }
 });
 
-test("ACP client permits Kimi WebSearch and FetchURL despite their ACP other kind", async () => {
-  for (const title of ["WebSearch", "FetchURL"]) {
-    const denied = [];
-    const client = new AcpClient({
-      command: process.execPath,
-      args: [fakeAgent],
-      cwd: testDirectory,
-      env: { ...process.env, FAKE_AUTO_TOOL_TITLE: title },
-      startupIdleMs: 2_000,
-      promptIdleMs: 2_000,
-      onPolicyViolation: (violation) => denied.push(violation),
-    });
-    try {
-      await client.initialize();
-      const session = await client.newSession();
-      const response = await client.prompt(session.sessionId, "return JSON");
-      assert.deepEqual(JSON.parse(response.text), { ok: true });
-      assert.equal(denied.length, 0);
-    } finally {
-      await client.close();
-    }
+test("ACP client permits fetch calls identified by their standard ACP kind", async () => {
+  const denied = [];
+  const client = new AcpClient({
+    command: process.execPath,
+    args: [fakeAgent],
+    cwd: testDirectory,
+    env: {
+      ...process.env,
+      FAKE_AUTO_TOOL_TITLE: "Searching: current package version",
+      FAKE_AUTO_TOOL_KIND: "fetch",
+    },
+    startupIdleMs: 2_000,
+    promptIdleMs: 2_000,
+    onPolicyViolation: (violation) => denied.push(violation),
+  });
+  try {
+    await client.initialize();
+    const session = await client.newSession();
+    const response = await client.prompt(session.sessionId, "return JSON");
+    assert.deepEqual(JSON.parse(response.text), { ok: true });
+    assert.equal(denied.length, 0);
+  } finally {
+    await client.close();
+  }
+});
+
+test("ACP client permits Kimi 0.34 FetchURL from structured input after a lazy tool call", async () => {
+  const denied = [];
+  const url = "https://pub.dev/packages/flutter_secure_storage";
+  const client = new AcpClient({
+    command: process.execPath,
+    args: [fakeAgent],
+    cwd: testDirectory,
+    env: {
+      ...process.env,
+      FAKE_AUTO_TOOL_UPDATES: JSON.stringify([
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "fetch-1",
+          kind: "other",
+          title: "FetchURL",
+          status: "pending",
+          content: [{ type: "content", content: { type: "text", text: '{"url":"https://pub.dev/pack' } }],
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "fetch-1",
+          status: "in_progress",
+          content: [{ type: "content", content: { type: "text", text: `{"url":"${url}` } }],
+        },
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "fetch-1",
+          kind: "other",
+          title: `Fetching: ${url}`,
+          status: "in_progress",
+          rawInput: { url },
+        },
+      ]),
+    },
+    startupIdleMs: 2_000,
+    promptIdleMs: 2_000,
+    onPolicyViolation: (violation) => denied.push(violation),
+  });
+  try {
+    await client.initialize();
+    const session = await client.newSession();
+    const response = await client.prompt(session.sessionId, "return JSON");
+    assert.deepEqual(JSON.parse(response.text), { ok: true });
+    assert.equal(denied.length, 0);
+  } finally {
+    await client.close();
+  }
+});
+
+test("ACP client does not permit a dynamic fetch title without structured HTTP input", async () => {
+  const client = new AcpClient({
+    command: process.execPath,
+    args: [fakeAgent],
+    cwd: testDirectory,
+    env: {
+      ...process.env,
+      FAKE_AUTO_TOOL_TITLE: "Fetching: https://pub.dev/packages/flutter_secure_storage",
+      FAKE_AUTO_TOOL_KIND: "other",
+      FAKE_AUTO_TOOL_RAW_INPUT: JSON.stringify({ path: "fixtures" }),
+    },
+    startupIdleMs: 2_000,
+    promptIdleMs: 2_000,
+  });
+  try {
+    await client.initialize();
+    const session = await client.newSession();
+    await assert.rejects(client.prompt(session.sessionId, "return JSON"), (error) => error.kind === "POLICY_VIOLATION");
+  } finally {
+    await client.close();
+  }
+});
+
+test("ACP client rejects a provisional other tool that never supplies structured input", async () => {
+  const client = new AcpClient({
+    command: process.execPath,
+    args: [fakeAgent],
+    cwd: testDirectory,
+    env: {
+      ...process.env,
+      FAKE_AUTO_TOOL_UPDATES: JSON.stringify([
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "unknown-1",
+          kind: "other",
+          title: "UnknownTool",
+          status: "pending",
+          content: [{ type: "content", content: { type: "text", text: '{"value":' } }],
+        },
+      ]),
+    },
+    startupIdleMs: 2_000,
+    promptIdleMs: 2_000,
+  });
+  try {
+    await client.initialize();
+    const session = await client.newSession();
+    await assert.rejects(client.prompt(session.sessionId, "return JSON"), (error) => error.kind === "POLICY_VIOLATION");
+  } finally {
+    await client.close();
   }
 });
 
