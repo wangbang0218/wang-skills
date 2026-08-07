@@ -1,9 +1,73 @@
-const SEVERITIES = new Set(["CONFLICT", "BLOCKED", "WARNING", "INFO"]);
-const MODES = new Set(["selector", "bootstrap", "review-tests", "rehydrate", "audit", "query"]);
+const SEVERITY_VALUES = ["CONFLICT", "BLOCKED", "WARNING", "INFO"];
+const MODE_VALUES = ["selector", "bootstrap", "review-tests", "rehydrate", "audit", "query"];
+const AC_STATUS_VALUES = ["COVERED", "PARTIAL", "MISSING", "EXCEPTION"];
+const RESEARCH_STATUS_VALUES = ["NOT_REQUESTED", "READY", "WARNING", "BLOCKED"];
+const CONTEXT_COMPLETENESS_VALUES = ["FULL", "PARTIAL"];
+
+const SEVERITIES = new Set(SEVERITY_VALUES);
+const MODES = new Set(MODE_VALUES);
 const STATUS_ORDER = ["CONFLICT", "BLOCKED", "WARNING"];
-const AC_STATUSES = new Set(["COVERED", "PARTIAL", "MISSING", "EXCEPTION"]);
-const RESEARCH_STATUSES = new Set(["NOT_REQUESTED", "READY", "WARNING", "BLOCKED"]);
-const CONTEXT_COMPLETENESS = new Set(["FULL", "PARTIAL"]);
+const AC_STATUSES = new Set(AC_STATUS_VALUES);
+const RESEARCH_STATUSES = new Set(RESEARCH_STATUS_VALUES);
+const CONTEXT_COMPLETENESS = new Set(CONTEXT_COMPLETENESS_VALUES);
+
+const NON_EMPTY_STRING_SCHEMA = { type: "string", minLength: 1 };
+
+export const REVIEWER_OUTPUT_SCHEMA = {
+  type: "object",
+  required: ["schema_version", "mode", "run_id", "summary", "findings", "ac_coverage", "next_actions", "external_research", "context"],
+  properties: {
+    schema_version: { const: 1 },
+    mode: { enum: MODE_VALUES },
+    run_id: NON_EMPTY_STRING_SCHEMA,
+    summary: NON_EMPTY_STRING_SCHEMA,
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "severity", "title", "explanation", "evidence"],
+        properties: {
+          id: NON_EMPTY_STRING_SCHEMA,
+          severity: { enum: SEVERITY_VALUES },
+          title: NON_EMPTY_STRING_SCHEMA,
+          explanation: NON_EMPTY_STRING_SCHEMA,
+          evidence: { type: "array" },
+        },
+      },
+    },
+    ac_coverage: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["ac_id", "status", "test_refs"],
+        properties: {
+          ac_id: { type: "string", pattern: "^AC-\\d{3,}$" },
+          status: { enum: AC_STATUS_VALUES },
+          test_refs: { type: "array", items: NON_EMPTY_STRING_SCHEMA },
+        },
+      },
+    },
+    next_actions: { type: "array", items: NON_EMPTY_STRING_SCHEMA },
+    external_research: {
+      type: "object",
+      required: ["status", "sources"],
+      properties: {
+        status: { enum: RESEARCH_STATUS_VALUES },
+        sources: { type: "array" },
+      },
+    },
+    context: {
+      type: "object",
+      required: ["completeness", "omissions", "compacted"],
+      properties: {
+        completeness: { enum: CONTEXT_COMPLETENESS_VALUES },
+        omissions: { type: "array", items: { type: "string" } },
+        compacted: { type: "boolean" },
+      },
+    },
+    selected_paths: { type: "array", items: NON_EMPTY_STRING_SCHEMA },
+  },
+};
 
 export function computeStatus(findings) {
   for (const status of STATUS_ORDER) {
@@ -23,6 +87,12 @@ export function validateReviewerEnvelope(input, { mode, runId, acIds } = {}) {
   if (!Array.isArray(input.findings)) throw new Error("Reviewer output findings must be an array.");
   if (input.mode === "selector" && input.findings.length !== 0) {
     throw new Error("Selector output findings must be empty because the selector catalog is metadata-only.");
+  }
+  if (input.selected_paths !== undefined || input.mode === "selector") {
+    if (!Array.isArray(input.selected_paths)
+      || input.selected_paths.some((item) => typeof item !== "string" || !item)) {
+      throw new Error("Reviewer output selected_paths must be an array of non-empty strings in selector mode.");
+    }
   }
 
   const findings = input.findings.map((finding, index) => validateFinding(finding, index));
@@ -86,7 +156,9 @@ function validateContext(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("context must be an object.");
   const context = value;
   if (!CONTEXT_COMPLETENESS.has(context.completeness)) throw new Error("context.completeness must be FULL or PARTIAL.");
-  if (!Array.isArray(context.omissions)) throw new Error("context.omissions must be an array.");
+  if (!Array.isArray(context.omissions) || context.omissions.some((item) => typeof item !== "string")) {
+    throw new Error("context.omissions must be an array of strings.");
+  }
   if (typeof context.compacted !== "boolean") throw new Error("context.compacted must be a boolean.");
   if (context.compacted === true) {
     const error = new Error("Reviewer reported that its own context was compacted.");

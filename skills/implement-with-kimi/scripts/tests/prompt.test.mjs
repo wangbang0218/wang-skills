@@ -19,6 +19,8 @@ test("prompt declares read-only policy and exact output contract", () => {
   assert.match(prompt, /state_summary.*execution-log path/i);
   assert.match(prompt, /\/tmp/);
   assert.match(prompt, /including command or excerpt/);
+  assert.match(prompt, /next_actions.*array of non-empty strings/i);
+  assert.match(prompt, /omissions as an array of strings/i);
 });
 
 test("review-tests treats valid expected Red as gate success rather than missing implementation blocker", () => {

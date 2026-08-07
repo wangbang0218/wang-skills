@@ -71,6 +71,7 @@ test("selector findings are rejected before unverified evidence can be accepted"
     /Selector output findings must be empty.*metadata-only/,
   );
   input.findings = [];
+  input.selected_paths = ["lib/example.dart"];
   assert.doesNotThrow(() => validateKimiEnvelope(input, { mode: "selector", runId: "run-1" }));
 });
 
@@ -141,4 +142,36 @@ test("required arrays and object fields fail closed", () => {
     { id: "F-1", severity: "INFO", title: "two", explanation: "two", evidence: [] },
   ]);
   assert.throws(() => validateKimiEnvelope(duplicate), /duplicate finding ids/);
+});
+
+test("nested collection item types fail closed", () => {
+  const objectActions = envelope([]);
+  objectActions.next_actions = [{ action: "继续审查", priority: "HIGH" }];
+  assert.throws(() => validateKimiEnvelope(objectActions), /next_actions.*non-empty strings/);
+
+  const scalarOmissions = envelope([]);
+  scalarOmissions.context.omissions = "无遗漏";
+  assert.throws(() => validateKimiEnvelope(scalarOmissions), /omissions.*array of strings/);
+
+  const objectOmissions = envelope([]);
+  objectOmissions.context.omissions = [{ path: "ignored.txt" }];
+  assert.throws(() => validateKimiEnvelope(objectOmissions), /omissions.*array of strings/);
+});
+
+test("selector requires non-empty selected paths during envelope validation", () => {
+  const input = envelope([]);
+  input.mode = "selector";
+  assert.throws(() => validateKimiEnvelope(input), /selected_paths.*non-empty strings/);
+
+  input.selected_paths = ["src/example.dart"];
+  assert.doesNotThrow(() => validateKimiEnvelope(input));
+
+  input.selected_paths = [""];
+  assert.throws(() => validateKimiEnvelope(input), /selected_paths.*non-empty strings/);
+});
+
+test("context extensions remain compatible with Kimi and local validation", () => {
+  const input = envelope([]);
+  input.context.token_count = 42;
+  assert.doesNotThrow(() => validateKimiEnvelope(input));
 });

@@ -47,7 +47,7 @@ export function buildReviewerPrompt({ mode, runId, specPath, contextPack, questi
     "Recorded execution logs in state_summary are metadata for reconstructing progress, not repository files. You may use their command, exit code, hash, and excerpt in the summary or AC assessment, but never copy a path from any recorded-log field, including command or excerpt, into findings[].evidence[].path. Independently locate and read a repository file before citing it, then use its repository-relative path.",
     "For local evidence, prefer a narrow one-line excerpt. Copy it byte-for-byte from the repository line range, including every leading and trailing space and tab on each line; never re-indent or pretty-print it. line_end is inclusive and must count every blank line present in a multi-line excerpt.",
     "Each ac_coverage item requires ac_id (AC-NNN), status (COVERED|PARTIAL|MISSING|EXCEPTION), and test_refs[]. Include every acceptance criterion declared by the specification.",
-    "context requires completeness (FULL|PARTIAL), omissions, compacted. Set compacted=true if your own session context was compacted.",
+    "next_actions must be an array of non-empty strings. context requires completeness (FULL|PARTIAL), omissions as an array of strings, and compacted as a boolean. Set compacted=true if your own session context was compacted.",
     "external_research requires status (NOT_REQUESTED|READY|WARNING|BLOCKED) and sources[].",
     ...(mode === "selector" ? [
       "Also return selected_paths as repository-relative paths. Do not omit mandatory paths.",

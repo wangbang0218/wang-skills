@@ -6,7 +6,7 @@ import { spawn, spawnSync } from "node:child_process";
 
 import { buildReviewerPrompt, extractJsonObject } from "./prompt.mjs";
 import { repositoryFingerprint } from "./repository.mjs";
-import { buildCapsule, validateReviewerEnvelope } from "./schema.mjs";
+import { buildCapsule, REVIEWER_OUTPUT_SCHEMA, validateReviewerEnvelope } from "./schema.mjs";
 import { validateEnvelopeEvidence } from "./runner.mjs";
 
 const REQUIRED_CLAUDE_FLAGS = [
@@ -19,23 +19,6 @@ const REQUIRED_CLAUDE_FLAGS = [
   "--disallowedTools",
   "--effort",
 ];
-
-const OUTPUT_SCHEMA = {
-  type: "object",
-  required: ["schema_version", "mode", "run_id", "summary", "findings", "ac_coverage", "next_actions", "external_research", "context"],
-  properties: {
-    schema_version: { const: 1 },
-    mode: { type: "string" },
-    run_id: { type: "string" },
-    summary: { type: "string" },
-    findings: { type: "array" },
-    ac_coverage: { type: "array" },
-    next_actions: { type: "array" },
-    external_research: { type: "object" },
-    context: { type: "object" },
-    selected_paths: { type: "array", items: { type: "string" } },
-  },
-};
 
 export async function preflightClaude({ env = process.env } = {}) {
   const binary = await resolveClaudeBinary(env);
@@ -134,7 +117,7 @@ export function claudeArguments() {
   return [
     "-p",
     "--output-format", "json",
-    "--json-schema", JSON.stringify(OUTPUT_SCHEMA),
+    "--json-schema", JSON.stringify(REVIEWER_OUTPUT_SCHEMA),
     "--safe-mode",
     "--no-session-persistence",
     "--disable-slash-commands",

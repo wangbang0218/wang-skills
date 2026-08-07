@@ -46,6 +46,47 @@ test("Claude runner uses safe mode, max effort, no persistence, and a read-only 
   assert.equal(claudeEnvironment({ PATH: "/bin" }).CLAUDE_CODE_MAX_CONTEXT_TOKENS, "1048576");
 });
 
+test("Claude output Schema mirrors validator-required nested collection types", () => {
+  const args = claudeArguments();
+  const schema = JSON.parse(args[args.indexOf("--json-schema") + 1]);
+  assert.deepEqual(schema.properties.next_actions.items, {
+    type: "string",
+    minLength: 1,
+  });
+  assert.deepEqual(schema.properties.context.required, [
+    "completeness",
+    "omissions",
+    "compacted",
+  ]);
+  assert.deepEqual(schema.properties.context.properties.omissions, {
+    type: "array",
+    items: { type: "string" },
+  });
+  assert.equal("additionalProperties" in schema.properties.context, false);
+  assert.deepEqual(schema.properties.findings.items.required, [
+    "id",
+    "severity",
+    "title",
+    "explanation",
+    "evidence",
+  ]);
+  assert.deepEqual(schema.properties.ac_coverage.items.required, [
+    "ac_id",
+    "status",
+    "test_refs",
+  ]);
+  assert.deepEqual(schema.properties.external_research.required, [
+    "status",
+    "sources",
+  ]);
+  assert.deepEqual(schema.properties.findings.items.properties.evidence, {
+    type: "array",
+  });
+  assert.deepEqual(schema.properties.external_research.properties.sources, {
+    type: "array",
+  });
+});
+
 test("Claude preflight feature-detects isolation flags and runs a structured review", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "iwk-claude-"));
   spawnSync("git", ["init", "-q"], { cwd: root });
@@ -81,5 +122,51 @@ test("Claude compaction fails closed instead of shrinking the context", async ()
       preflight: { binary, version: "9.9.9" },
     }),
     (error) => error.kind === "CONTEXT_OVERSIZE",
+  );
+});
+
+test("Claude selector omissions enter Schema repair instead of failing after the runner returns", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "iwk-claude-selector-"));
+  spawnSync("git", ["init", "-q"], { cwd: root });
+  const output = envelope("run-selector");
+  output.mode = "selector";
+  const binary = await fakeClaude(root, { structured_output: output });
+  await assert.rejects(
+    runClaudeNode({
+      repoRoot: root,
+      mode: "selector",
+      runId: "run-selector",
+      specPath: "spec.md",
+      contextPack: "<context />",
+      acIds: [],
+      preflight: { binary, version: "9.9.9" },
+    }),
+    (error) => error.kind === "SCHEMA" && /selected_paths/.test(error.message),
+  );
+});
+
+test("Claude evidence-shape failures remain EVIDENCE and never consume Schema repair", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "iwk-claude-evidence-"));
+  spawnSync("git", ["init", "-q"], { cwd: root });
+  const output = envelope("run-evidence");
+  output.findings = [{
+    id: "F-001",
+    severity: "WARNING",
+    title: "外部证据不完整",
+    explanation: "缺少标题与访问时间。",
+    evidence: [{ url: "https://example.com", claim: "示例声明" }],
+  }];
+  const binary = await fakeClaude(root, { structured_output: output });
+  await assert.rejects(
+    runClaudeNode({
+      repoRoot: root,
+      mode: "bootstrap",
+      runId: "run-evidence",
+      specPath: "spec.md",
+      contextPack: "<context />",
+      acIds: [],
+      preflight: { binary, version: "9.9.9" },
+    }),
+    (error) => error.kind === "EVIDENCE" && /missing title/.test(error.message),
   );
 });
