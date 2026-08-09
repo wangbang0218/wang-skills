@@ -5,7 +5,11 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-import { renderSelectorContext, repositoryFingerprint } from "../lib/repository.mjs";
+import {
+  reconcileSelectorPaths,
+  renderSelectorContext,
+  repositoryFingerprint,
+} from "../lib/repository.mjs";
 
 test("selector context preserves the catalog SHA-256", () => {
   const sha256 = "a".repeat(64);
@@ -23,6 +27,42 @@ test("selector context preserves the catalog SHA-256", () => {
 
   assert.match(context, new RegExp(`"sha256": "${sha256}"`));
   assert.doesNotMatch(context, /must not be included/);
+});
+
+test("selector reconciliation ignores only cataloged managed state paths", () => {
+  const result = reconcileSelectorPaths({
+    catalog: [{ path: "lib/example.mjs" }],
+    excluded: [
+      { path: "docs/tasks/module.state.md", reason: "managed_state" },
+      { path: "fixtures/blob.bin", reason: "binary_nul" },
+    ],
+  }, ["lib/example.mjs", "docs/tasks/module.state.md"]);
+
+  assert.deepEqual(result.selectedPaths, ["lib/example.mjs"]);
+  assert.deepEqual(result.ignoredManagedStatePaths, ["docs/tasks/module.state.md"]);
+  assert.deepEqual(result.unknownPaths, []);
+});
+
+test("selector reconciliation keeps every other unknown or excluded path fatal", () => {
+  const result = reconcileSelectorPaths({
+    catalog: [{ path: "lib/example.mjs" }],
+    excluded: [
+      { path: "docs/tasks/module.state.md", reason: "managed_state" },
+      { path: "fixtures/blob.bin", reason: "binary_nul" },
+    ],
+  }, [
+    "docs/tasks/invented.state.md",
+    "fixtures/blob.bin",
+    "outside/repository.txt",
+  ]);
+
+  assert.deepEqual(result.selectedPaths, []);
+  assert.deepEqual(result.ignoredManagedStatePaths, []);
+  assert.deepEqual(result.unknownPaths, [
+    "docs/tasks/invented.state.md",
+    "fixtures/blob.bin",
+    "outside/repository.txt",
+  ]);
 });
 
 test("repository fingerprint detects staged changes before the first commit", async () => {

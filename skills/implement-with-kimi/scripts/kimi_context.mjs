@@ -14,6 +14,7 @@ import {
   buildRepositoryCatalog,
   getRepoRoot,
   gitBaseline,
+  reconcileSelectorPaths,
   renderContextPack,
   renderSelectorContext,
   repositoryFingerprint,
@@ -316,10 +317,14 @@ async function executeReview(repoRoot, spec, state, mode, options, onFailover = 
     });
     const selectedPaths = selector.envelope.selected_paths;
     if (!Array.isArray(selectedPaths)) throw typedError("SCHEMA", "Selector response is missing selected_paths.");
-    const known = new Set(catalog.catalog.map((file) => file.path));
-    const invalid = selectedPaths.filter((file) => !known.has(file));
-    if (invalid.length > 0) throw typedError("SCHEMA", `Selector returned unknown paths: ${invalid.join(", ")}`);
-    selectorPaths = selectedPaths;
+    const reconciledPaths = reconcileSelectorPaths(catalog, selectedPaths);
+    if (reconciledPaths.unknownPaths.length > 0) {
+      throw typedError("SCHEMA", `Selector returned unknown paths: ${reconciledPaths.unknownPaths.join(", ")}`);
+    }
+    if (reconciledPaths.ignoredManagedStatePaths.length > 0) {
+      progress(`Selector ignored managed state paths: ${reconciledPaths.ignoredManagedStatePaths.join(", ")}`);
+    }
+    selectorPaths = reconciledPaths.selectedPaths;
     selection = selectRepositoryContext(catalog, { budgetTokens: CONTEXT_BUDGET, selectorPaths });
     if (selection.status === "BLOCKED") throw typedError("BLOCKED", selection.reason);
   }

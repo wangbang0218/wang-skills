@@ -66,6 +66,27 @@ export async function buildRepositoryCatalog(repoRoot, { specPath, authorityPath
   return { catalog, excluded, required_paths: [...required] };
 }
 
+export function reconcileSelectorPaths(catalogResult, selectorPaths) {
+  const knownPaths = new Set(catalogResult.catalog.map((file) => file.path));
+  const managedStatePaths = new Set(
+    catalogResult.excluded
+      .filter((item) => item.reason === "managed_state")
+      .map((item) => item.path),
+  );
+  const result = {
+    selectedPaths: [],
+    ignoredManagedStatePaths: [],
+    unknownPaths: [],
+  };
+
+  for (const file of selectorPaths) {
+    if (knownPaths.has(file)) result.selectedPaths.push(file);
+    else if (managedStatePaths.has(file)) result.ignoredManagedStatePaths.push(file);
+    else result.unknownPaths.push(file);
+  }
+  return result;
+}
+
 export function selectRepositoryContext(catalogResult, { budgetTokens = 650_000, selectorPaths = [] } = {}) {
   const required = new Set(catalogResult.required_paths);
   for (const selected of selectorPaths) required.add(selected);
