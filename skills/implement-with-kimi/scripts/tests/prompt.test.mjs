@@ -16,6 +16,8 @@ test("prompt declares read-only policy and exact output contract", () => {
   assert.match(prompt, /Mode: audit/);
   assert.match(prompt, /leading.*space.*tab/i);
   assert.match(prompt, /repository-relative/);
+  assert.match(prompt, /manifest.*authoritative SHA-256.*selected or omitted/i);
+  assert.match(prompt, /copy its matching sha256 verbatim.*never leave it blank/i);
   assert.match(prompt, /state_summary.*execution-log path/i);
   assert.match(prompt, /\/tmp/);
   assert.match(prompt, /including command or excerpt/);

@@ -7,6 +7,7 @@ import test from "node:test";
 
 import {
   reconcileSelectorPaths,
+  renderContextPack,
   renderSelectorContext,
   repositoryFingerprint,
 } from "../lib/repository.mjs";
@@ -27,6 +28,40 @@ test("selector context preserves the catalog SHA-256", () => {
 
   assert.match(context, new RegExp(`"sha256": "${sha256}"`));
   assert.doesNotMatch(context, /must not be included/);
+});
+
+test("review context manifest preserves omitted file SHA-256", () => {
+  const selectedSha256 = "a".repeat(64);
+  const omittedSha256 = "b".repeat(64);
+  const context = renderContextPack({
+    selected: [{
+      path: "spec.md",
+      sha256: selectedSha256,
+      bytes: 13,
+      estimated_tokens: 7,
+      tier: 1,
+      text: "# Module spec",
+    }],
+    omitted: [{
+      path: "lib/omitted.mjs",
+      sha256: omittedSha256,
+      reason: "context_budget",
+      estimated_tokens: 900,
+    }],
+    estimated_tokens: 7,
+    budget_tokens: 650_000,
+  });
+  const manifestStart = context.indexOf("\n") + 1;
+  const manifestEnd = context.indexOf("\n<repository-file", manifestStart);
+  const manifest = JSON.parse(context.slice(manifestStart, manifestEnd));
+
+  assert.equal(manifest.completeness, "PARTIAL");
+  assert.deepEqual(manifest.omitted, [{
+    path: "lib/omitted.mjs",
+    sha256: omittedSha256,
+    reason: "context_budget",
+    estimated_tokens: 900,
+  }]);
 });
 
 test("selector reconciliation ignores only cataloged managed state paths", () => {

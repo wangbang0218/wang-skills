@@ -32,7 +32,12 @@ export function selectContextFiles(catalog, { budgetTokens, requiredPaths = [] }
       selected.push(item);
       used += item.estimated_tokens;
     } else {
-      omitted.push({ path: item.path, reason: "context_budget", estimated_tokens: item.estimated_tokens });
+      omitted.push({
+        path: item.path,
+        sha256: item.sha256,
+        reason: "context_budget",
+        estimated_tokens: item.estimated_tokens,
+      });
     }
   }
   return { status: "READY", selected, omitted, estimated_tokens: used, budget_tokens: budgetTokens };

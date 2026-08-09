@@ -25,10 +25,11 @@ test("mandatory context is never silently truncated", () => {
 });
 
 test("selection records every omitted file with a reason", () => {
+  const omittedSha256 = "c".repeat(64);
   const catalog = [
-    { path: "spec.md", estimated_tokens: 100, tier: 1 },
-    { path: "src/a.js", estimated_tokens: 200, tier: 3 },
-    { path: "examples/large.txt", estimated_tokens: 900, tier: 6 },
+    { path: "spec.md", sha256: "a".repeat(64), estimated_tokens: 100, tier: 1 },
+    { path: "src/a.js", sha256: "b".repeat(64), estimated_tokens: 200, tier: 3 },
+    { path: "examples/large.txt", sha256: omittedSha256, estimated_tokens: 900, tier: 6 },
   ];
   const result = selectContextFiles(catalog, {
     budgetTokens: 400,
@@ -38,6 +39,11 @@ test("selection records every omitted file with a reason", () => {
   assert.equal(result.status, "READY");
   assert.deepEqual(result.selected.map((item) => item.path), ["spec.md", "src/a.js"]);
   assert.deepEqual(result.omitted, [
-    { path: "examples/large.txt", reason: "context_budget", estimated_tokens: 900 },
+    {
+      path: "examples/large.txt",
+      sha256: omittedSha256,
+      reason: "context_budget",
+      estimated_tokens: 900,
+    },
   ]);
 });
