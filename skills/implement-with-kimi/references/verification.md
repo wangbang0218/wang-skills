@@ -4,7 +4,7 @@
 
 - Local deterministic checks
 - Fake ACP integration
-- Real Kimi checks
+- Real reviewer checks
 - Limits
 
 ## Local deterministic checks
@@ -15,7 +15,7 @@ Run:
 node --test skills/implement-with-kimi/scripts/tests/*.test.mjs
 ```
 
-Cover state transitions and v1 migration, reviewer failover classification, Claude isolation arguments, managed/user-note isolation, selector metadata-only prompting and empty findings, evidence hashes and excerpts, symlink escape, context budget selection, model capability checks, JSON capsule limits, Hook merge/removal, Hook lifecycle output, and CLI evidence recording.
+Cover state transitions and v1/v2 migration, explicit reviewer selection and no-fallback routing, Claude isolation arguments, managed/user-note isolation, selector metadata-only prompting and empty findings, evidence hashes and excerpts, symlink escape, context budget selection, model capability checks, JSON capsule limits, Hook merge/removal, Hook lifecycle output, and CLI evidence recording.
 
 Check every script:
 
@@ -41,7 +41,7 @@ Use the bundled deterministic fake server to test:
 
 Real tests consume reviewer quota and require explicit user authorization.
 
-Run Kimi at three levels:
+When authorized, run Kimi at three levels:
 
 1. Small real ACP smoke using a synthetic Git repository and a tiny valid specification.
 2. Near-budget K3 1M synthetic repository containing known needles, conflicting requirements, correction cases, and selector pressure.
@@ -49,7 +49,7 @@ Run Kimi at three levels:
 
 Never use a proprietary repository for the near-budget test. Verify the actual model alias, context size, effort, ACP protocol, tool denials, Schema, evidence, snapshot stability, and capsule size.
 
-With separate authorization, run a small Claude Code fallback smoke using a synthetic repository and the user's configured default model. Verify safe mode, read-only tools, max effort, Schema, fingerprint, failure classification, and that no session is persisted. Do not run a near-1M paid probe merely to prove the user's context declaration.
+With separate authorization, run a small Claude Code reviewer smoke using a synthetic repository and the user's configured default model. Verify direct routing without Kimi, safe mode, read-only tools, max effort, Schema, fingerprint, failure behavior, and that no session is persisted. Do not run a near-1M paid probe merely to prove the user's context declaration.
 
 ## Repository checks
 
@@ -61,4 +61,4 @@ python3 <skill-creator>/scripts/quick_validate.py skills/implement-with-kimi
 git diff --check
 ```
 
-CLI discovery and static checks do not prove real model behavior. Report separately which real Kimi layers ran, their model/token cost implications, and any layer skipped or blocked.
+CLI discovery and static checks do not prove real model behavior. Report separately which real reviewer layers ran, their model/token cost implications, and any layer skipped or blocked.

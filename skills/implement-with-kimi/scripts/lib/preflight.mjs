@@ -7,8 +7,7 @@ const REQUIRED_CONTEXT_SIZE = 1_048_576;
 const REQUIRED_EFFORTS = ["low", "high", "max"];
 
 export async function preflightKimi({ env = process.env } = {}) {
-  const major = Number(process.versions.node.split(".")[0]);
-  if (major < 18) throw codedError("CONFIG", "implement-with-kimi requires Node.js 18 or newer.");
+  assertSupportedNode();
 
   const binary = await resolveKimiBinary(env);
   const versionResult = run(binary, ["--version"], env);
@@ -34,6 +33,13 @@ export async function preflightKimi({ env = process.env } = {}) {
     max_context_size: model.config.maxContextSize,
     support_efforts: model.config.supportEfforts,
   };
+}
+
+export function assertSupportedNode(version = process.versions.node) {
+  const major = Number(String(version).split(".")[0]);
+  if (!Number.isInteger(major) || major < 18) {
+    throw codedError("CONFIG", "implement-with-kimi requires Node.js 18 or newer.");
+  }
 }
 
 export function selectK3Model(catalog, requestedAlias) {

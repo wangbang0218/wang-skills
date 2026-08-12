@@ -29,7 +29,7 @@ npx skills add wangbang0218/wang-skills \
 
 通过一次只问一个问题的深入访谈细化新项目或现有项目，在用户确认后生成并校验 PRD、架构、可选 UI 规范、模块规格与全链路追踪清单，最终交接给 `implement-with-kimi`。
 
-UI 项目使用已安装的 `baoyu-design` 生成和审批 HTML 设计稿；纯后端项目可将 UI 标记为不适用。该 Skill 只应显式调用，且不会自动启动 Kimi 或进入实现阶段。
+UI 项目使用已安装的 `baoyu-design` 生成和审批 HTML 设计稿；纯后端项目可将 UI 标记为不适用。该 Skill 只应显式调用，且不会自动启动 reviewer 或进入实现阶段。
 
 安装：
 
@@ -41,9 +41,9 @@ npx skills add wangbang0218/wang-skills \
 
 ### `implement-with-kimi`
 
-让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发，并把 Kimi K3 1M 用作首选的只读超长上下文审查器。经每个运行显式授权后，可在 Kimi 登录、额度、订阅或服务可用性失败时调用本机 Claude Code 的默认供应商、模型和认证作为 fallback；不绑定 DeepSeek、Qwen 或具体模型名。支持纯本地输入校验、Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
+让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发。每个模块 run 必须手动选择 Kimi K3 1M 或本机 Claude Code 默认模型作为只读 reviewer；选择后全程沿用，失败时不会自动切换。显式调用该 Skill 并选择 reviewer，即授权其按安全边界读取当前 Git worktree 中的合规文本，无需重复传入代码查看授权。支持纯本地输入校验、Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
 
-该 Skill 只应显式调用。它会把仓库内容交给当前获授权的 reviewer，使用前请确保敏感信息没有进入仓库。
+该 Skill 只应显式调用。它没有 secret scanner；使用前请确保敏感信息没有进入仓库。ignored 文件、二进制或不支持的文本、托管状态文件、不可读路径及越界 symlink 不会交给 reviewer。
 
 安装：
 

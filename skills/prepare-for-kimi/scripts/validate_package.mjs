@@ -60,5 +60,5 @@ function usage() {
 Usage:
   validate_package.mjs --package <implementation-package.json> [--spec <module.md>]
 
-This command reads repository files only. It never calls Kimi.`;
+This command reads repository files only. It never calls Kimi or Claude Code.`;
 }

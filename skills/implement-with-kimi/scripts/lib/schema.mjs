@@ -222,7 +222,7 @@ export function buildCapsule(envelope, { maxBytes = 32 * 1024 } = {}) {
   return capsule;
 }
 
-// Backward-compatible export for callers and tests written before reviewer fallback existed.
+// Backward-compatible export for Kimi-named callers and tests.
 export const validateKimiEnvelope = validateReviewerEnvelope;
 
 function compactFinding(finding) {

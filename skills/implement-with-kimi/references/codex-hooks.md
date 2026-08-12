@@ -9,7 +9,7 @@
 
 ## Purpose
 
-The optional project Hook complements the Skill. It does not invoke Kimi. It observes Codex `SessionStart` events and injects a short developer-context reminder before Codex continues.
+The optional project Hook complements the Skill. It does not invoke a reviewer. It observes Codex `SessionStart` events and injects a short developer-context reminder before Codex continues.
 
 Codex supports project hooks in `.codex/hooks.json` or `.codex/config.toml`; project hooks load only for trusted projects and must be reviewed through `/hooks`. After root-session compaction, `SessionStart` with source `compact` runs before the next model request, including immediate continuation after mid-turn automatic compaction:
 
@@ -43,7 +43,7 @@ The Hook searches Git-tracked and non-ignored untracked `*.state.md` files for t
 - One active module and `startup`: require an explicit `resume` or `suspend`; do not take over automatically.
 - Multiple active modules or malformed state: inject a conflict warning and require repair.
 
-The Hook updates only the managed state block and preserves User notes. It does not run Kimi or intercept every tool call, so its five-second command timeout does not conflict with Kimi's no-total-deadline policy.
+The Hook updates only the managed state block and preserves User notes. It accepts state schema versions 1, 2, and 3, includes the selected reviewer in recovery context, and does not run either reviewer or intercept every tool call. `setup-hook` may replace an exact known older bundled Hook, but refuses to overwrite unknown or user-modified scripts.
 
 ## Removal and limitations
 

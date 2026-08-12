@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { selectK3Model } from "../lib/preflight.mjs";
+import { assertSupportedNode, selectK3Model } from "../lib/preflight.mjs";
 
 const catalog = {
   models: {
@@ -27,4 +27,10 @@ test("preflight rejects missing effort capabilities", () => {
   const invalid = structuredClone(catalog);
   invalid.models["kimi-code/k3"].supportEfforts = ["low", "high"];
   assert.throws(() => selectK3Model(invalid), /max/);
+});
+
+test("common reviewer preflight requires Node.js 18 or newer", () => {
+  assert.doesNotThrow(() => assertSupportedNode("18.0.0"));
+  assert.throws(() => assertSupportedNode("17.9.1"), /Node\.js 18 or newer/);
+  assert.throws(() => assertSupportedNode("invalid"), /Node\.js 18 or newer/);
 });

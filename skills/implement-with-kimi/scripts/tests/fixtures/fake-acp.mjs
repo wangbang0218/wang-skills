@@ -45,6 +45,34 @@ input.on("line", (line) => {
       send({ id: message.id, error });
       return;
     }
+    if (process.env.FAKE_REVIEW_RESPONSE) {
+      const prompt = message.params?.prompt?.[0]?.text ?? "";
+      const runId = prompt.match(/Run id: ([^.]+)\./)?.[1];
+      const mode = prompt.match(/Mode: ([^.]+)\./)?.[1];
+      const output = {
+        schema_version: 1,
+        mode,
+        run_id: runId,
+        summary: "Kimi review complete",
+        findings: [],
+        ac_coverage: [{ ac_id: "AC-001", status: "COVERED", test_refs: ["spec.md"] }],
+        next_actions: [],
+        external_research: { status: "NOT_REQUESTED", sources: [] },
+        context: { completeness: "FULL", omissions: [], compacted: false },
+      };
+      send({
+        method: "session/update",
+        params: {
+          sessionId: "session-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: JSON.stringify(output) },
+          },
+        },
+      });
+      send({ id: message.id, result: { stopReason: "end_turn" } });
+      return;
+    }
     if (Object.hasOwn(process.env, "FAKE_RESPONSE_TEXT")) {
       send({
         method: "session/update",

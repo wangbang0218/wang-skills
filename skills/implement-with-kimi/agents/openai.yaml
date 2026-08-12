@@ -1,6 +1,6 @@
 interface:
-  display_name: "Implement with Kimi"
-  short_description: "Build modules with Kimi and reviewer fallback"
-  default_prompt: "Use $implement-with-kimi to implement this module from its persisted specification with TDD, Kimi-first review, and explicitly authorized local Claude Code fallback."
+  display_name: "Implement with Reviewer"
+  short_description: "Run TDD modules with a chosen read-only reviewer"
+  default_prompt: "Use $implement-with-kimi to implement this module with TDD; ask me to choose Kimi or Claude Code before starting."
 policy:
   allow_implicit_invocation: false

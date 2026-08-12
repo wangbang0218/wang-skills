@@ -21,7 +21,7 @@ The deterministic script owns that block. Preserve all text under `## User notes
 
 ## Managed fields
 
-Schema version 2 records:
+Schema version 3 records:
 
 - `tool`, `state_schema_version`
 - `spec_path`, `spec_sha256`, `authority_paths`, `authority_hashes`
@@ -29,7 +29,7 @@ Schema version 2 records:
 - `git_baseline`, `implementation_fingerprint`
 - `goal`
 - Red plan and execution evidence
-- per-run reviewer consent, required 1M declaration, failover scope and reason
+- explicitly selected per-run reviewer, repository access authorization, required 1M context, and selection time
 - latest reviewer identity/model metadata and raw diagnostic reference
 - unresolved findings and warnings
 - Hook observation status
@@ -68,4 +68,4 @@ Only deterministic events may move state forward:
 
 ## Migration rules
 
-Migrate version 1 to version 2 in place. Preserve run id, activity, status, fingerprints, evidence, findings, warnings, archived runs, and User notes. Convert `last_kimi_review` to `last_reviewer_review` with `reviewer: kimi`; default fallback authorization to disabled and append a migration event. Reject a newer unknown version and require a Skill upgrade. Never rebuild a malformed state file automatically.
+Migrate versions 1 and 2 to version 3 in place. Preserve run id, activity, status, fingerprints, evidence, findings, warnings, archived runs, latest reviewer evidence, and User notes. Convert v1 `last_kimi_review` to `last_reviewer_review` with `reviewer: kimi`. Record the complete legacy preferred/fallback/failover route in migration history, but clear the selected reviewer so old routing is not treated as a new manual choice. Require `select-reviewer` before the next review for an active migrated run; require `resume --reviewer kimi|claude-code` for a suspended migrated run. Reject a newer unknown version and require a Skill upgrade. Never rebuild a malformed state file automatically.

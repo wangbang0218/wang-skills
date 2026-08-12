@@ -8,6 +8,7 @@ import { buildReviewerPrompt, extractJsonObject } from "./prompt.mjs";
 import { repositoryFingerprint } from "./repository.mjs";
 import { buildCapsule, REVIEWER_OUTPUT_SCHEMA, validateReviewerEnvelope } from "./schema.mjs";
 import { validateEnvelopeEvidence } from "./runner.mjs";
+import { assertSupportedNode } from "./preflight.mjs";
 
 const REQUIRED_CLAUDE_FLAGS = [
   "--safe-mode",
@@ -21,6 +22,7 @@ const REQUIRED_CLAUDE_FLAGS = [
 ];
 
 export async function preflightClaude({ env = process.env } = {}) {
+  assertSupportedNode();
   const binary = await resolveClaudeBinary(env);
   const version = spawnSync(binary, ["--version"], { env, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 });
   if (version.status !== 0) throw typedError("CONFIG", `Claude Code version check failed: ${version.stderr.trim()}`);
@@ -59,7 +61,7 @@ export async function runClaudeNode({
       repairError,
       reviewer: "local Claude Code using its configured default provider and model",
     });
-    onProgress(`Claude Code fallback; mode ${mode}; effort max; attempt ${attempt}`);
+    onProgress(`Claude Code reviewer; mode ${mode}; effort max; attempt ${attempt}`);
     const response = await invokeClaude({ binary: preflight.binary, cwd: repoRoot, prompt, signal });
     await writeFile(path.join(diagnostics, `raw-cli-${attempt}.json`), response.stdout, "utf8");
     if (response.status !== 0) {

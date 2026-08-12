@@ -1,6 +1,6 @@
 ---
 name: prepare-for-kimi
-description: Refine a new or existing software project through a one-question-at-a-time decision interview, then create and validate an approved PRD, architecture, optional Baoyu HTML UI design, module specifications, and traceability package for implement-with-kimi. Use only when the user explicitly asks to prepare persisted project documents or an implementation-ready package for Kimi-driven development.
+description: Refine a new or existing software project through a one-question-at-a-time decision interview, then create and validate an approved PRD, architecture, optional Baoyu HTML UI design, module specifications, and traceability package for implement-with-kimi. Use only when the user explicitly asks to prepare persisted project documents or an implementation-ready package for reviewer-assisted development.
 ---
 
 # Prepare for Kimi
@@ -30,7 +30,7 @@ Use the templates in `assets/templates/` as starting structures, not as content 
 
 ## Validate and hand off
 
-Run the pure-local validator; it must not call Kimi or require a Kimi login:
+Run the pure-local validator; it must not call either reviewer or require reviewer configuration:
 
 ```bash
 node <skill-directory>/scripts/validate_package.mjs \
@@ -43,8 +43,8 @@ Finish with:
 
 - the validated package and document paths;
 - the recommended first module;
-- the exact `implement-with-kimi bootstrap` command emitted by validation;
+- the exact Kimi and Claude Code `implement-with-kimi bootstrap` commands emitted by validation;
 - unresolved warnings or risks;
 - an explicit request for the user to invoke `$implement-with-kimi` separately.
 
-Never start `implement-with-kimi`, contact Kimi, commit, install Skills, or push unless the user separately asks.
+Never start `implement-with-kimi`, contact a reviewer, commit, install Skills, or push unless the user separately asks. The later Skill invocation must make the user choose Kimi or Claude Code; do not pick one during preparation.

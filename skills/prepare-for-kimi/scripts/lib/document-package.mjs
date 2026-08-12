@@ -143,11 +143,12 @@ export async function validateImplementationPackage(repoRoot, packagePath, { spe
   if (issues.length > 0) throw new PackageValidationError(unique(issues));
 
   const selectedModules = selectedSpec ? [selectedSpec] : modules;
-  const bootstrapCommands = selectedModules.map((module) => ({
+  const bootstrapCommands = selectedModules.flatMap((module) => ["kimi", "claude-code"].map((reviewer) => ({
     module_id: module.id,
     spec: module.spec,
-    command: renderBootstrapCommand(module.spec, authorities),
-  }));
+    reviewer,
+    command: renderBootstrapCommand(module.spec, authorities, reviewer),
+  })));
   const recommended = modules.find((module) => module.depends_on.length === 0) ?? modules[0];
   return {
     schema_version: 1,
@@ -476,13 +477,15 @@ function hasExplicitNone(value) {
   return /\bnone\b|not applicable|n\/a|无|不适用/i.test(String(value || ""));
 }
 
-function renderBootstrapCommand(spec, authorities) {
+function renderBootstrapCommand(spec, authorities, reviewer) {
   const args = [
     "node",
     "<implement-with-kimi-directory>/scripts/kimi_context.mjs",
     "bootstrap",
     "--spec",
     spec,
+    "--reviewer",
+    reviewer,
     ...authorities.flatMap((authority) => ["--authority", authority]),
     "--goal",
     "none",

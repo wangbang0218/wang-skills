@@ -22,7 +22,7 @@ Kimi Code documents `kimi acp` as JSON-RPC over stdin/stdout with clean stdout a
 
 ## ACP lifecycle
 
-Create a fresh session per selector, bootstrap, test review, rehydration, audit, query, and retry. Never load or resume a Kimi session. Select `model=kimi-code/k3` and effort:
+Create a fresh session per selector, bootstrap, test review, rehydration, audit, and query. Never load or resume a Kimi session. Select `model=kimi-code/k3` and effort:
 
 - selector: low
 - bootstrap, review-tests, rehydrate, query: high
@@ -83,4 +83,4 @@ The validated envelope must retain the exact source excerpt. After the hash matc
 - Do not retry deterministic configuration, conflict, blocker, policy, or evidence failures.
 - Bound combined retries; never create an infinite retry product.
 - On SIGINT/SIGTERM, send `session/cancel`, allow a short shutdown grace period, then terminate. Mark the node `CANCELLED`; never reuse partial streamed output.
-- Do not transient-retry an explicit billing, monthly, or rolling quota exhaustion. Route only after the error is classified under [reviewer-fallback.md](reviewer-fallback.md).
+- Do not transient-retry an explicit billing, monthly, or rolling quota exhaustion. Surface the selected Kimi failure without automatically switching reviewer; see [reviewer-selection.md](reviewer-selection.md).

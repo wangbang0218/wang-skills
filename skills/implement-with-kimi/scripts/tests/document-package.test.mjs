@@ -11,13 +11,18 @@ import { PackageValidationError, validateImplementationPackage } from "../lib/do
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const cli = path.resolve(testsDirectory, "../kimi_context.mjs");
 
-test("consumer validation accepts an approved package without calling Kimi", async () => {
+test("consumer validation emits two exact bootstrap commands without calling a reviewer", async () => {
   const root = await fixture();
   const direct = await validateImplementationPackage(root, "docs/project/implementation-package.json", {
     specPath: "docs/tasks/core.md",
   });
   assert.equal(direct.status, "READY");
-  assert.equal(direct.bootstrap_commands.length, 1);
+  assert.equal(direct.bootstrap_commands.length, 2);
+  assert.deepEqual(direct.bootstrap_commands.map((item) => item.reviewer), ["kimi", "claude-code"]);
+  const commandPrefix = "node '<skill-directory>/scripts/kimi_context.mjs' bootstrap --spec docs/tasks/core.md --reviewer";
+  const authorityArgs = "--authority docs/project/implementation-package.json --authority docs/project/authority.md --authority docs/product/prd.md --authority docs/architecture/architecture.md --goal none";
+  assert.equal(direct.bootstrap_commands[0].command, `${commandPrefix} kimi ${authorityArgs}`);
+  assert.equal(direct.bootstrap_commands[1].command, `${commandPrefix} claude-code ${authorityArgs}`);
 
   const cliResult = spawnSync(process.execPath, [
     cli,

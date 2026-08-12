@@ -69,11 +69,12 @@ export async function validateImplementationPackage(repoRoot, packagePath, { spe
     authority_paths: authorities,
     module_specs: modules.map(({ id, name, spec, depends_on }) => ({ id, name, spec, depends_on })),
     recommended_module: recommended?.id ?? null,
-    bootstrap_commands: selectedModules.map((module) => ({
+    bootstrap_commands: selectedModules.flatMap((module) => ["kimi", "claude-code"].map((reviewer) => ({
       module_id: module.id,
       spec: module.spec,
-      command: renderBootstrapCommand(module.spec, authorities),
-    })),
+      reviewer,
+      command: renderBootstrapCommand(module.spec, authorities, reviewer),
+    }))),
   };
 }
 
@@ -291,13 +292,15 @@ function stringArray(value) {
   return Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === "string" && item.trim() !== "");
 }
 
-function renderBootstrapCommand(spec, authorities) {
+function renderBootstrapCommand(spec, authorities, reviewer) {
   const args = [
     "node",
     "<skill-directory>/scripts/kimi_context.mjs",
     "bootstrap",
     "--spec",
     spec,
+    "--reviewer",
+    reviewer,
     ...authorities.flatMap((authority) => ["--authority", authority]),
     "--goal",
     "none",

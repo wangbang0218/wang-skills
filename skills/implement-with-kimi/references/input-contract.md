@@ -35,7 +35,7 @@ Domain ownership comes from `authority.md`: PRD owns product behavior, architect
 
 ## Consumer validation
 
-Before the first Kimi call, run:
+Before the first reviewer call, run:
 
 ```bash
 node <skill-directory>/scripts/kimi_context.mjs validate-package \
@@ -43,7 +43,7 @@ node <skill-directory>/scripts/kimi_context.mjs validate-package \
   --spec docs/tasks/module.md
 ```
 
-This is a read-only local command. It does not inspect Kimi configuration, call a model, create state, or consume quota. Continue only on `READY`. Its bootstrap command contains the exact declared authority paths.
+This is a read-only local command. It does not inspect reviewer configuration, call a model, create state, or consume quota. Continue only on `READY`. It emits separate Kimi and Claude Code bootstrap commands for each selected module; every command contains an explicit `--reviewer` and the exact declared authority paths.
 
 ## Legacy inputs
 

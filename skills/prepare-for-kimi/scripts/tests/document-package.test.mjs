@@ -24,7 +24,12 @@ test("the bundled templates become a valid implementation package after explicit
     "docs/architecture/architecture.md",
     "docs/design/ui-spec.md",
   ]);
-  assert.match(result.bootstrap_commands[0].command, /--spec docs\/tasks\/module-name\.md/);
+  assert.equal(result.bootstrap_commands.length, 2);
+  assert.deepEqual(result.bootstrap_commands.map((item) => item.reviewer), ["kimi", "claude-code"]);
+  const commandPrefix = "node '<implement-with-kimi-directory>/scripts/kimi_context.mjs' bootstrap --spec docs/tasks/module-name.md --reviewer";
+  const authorityArgs = "--authority docs/project/implementation-package.json --authority docs/project/authority.md --authority docs/product/prd.md --authority docs/architecture/architecture.md --authority docs/design/ui-spec.md --goal none";
+  assert.equal(result.bootstrap_commands[0].command, `${commandPrefix} kimi ${authorityArgs}`);
+  assert.equal(result.bootstrap_commands[1].command, `${commandPrefix} claude-code ${authorityArgs}`);
 
   const cliResult = spawnSync(process.execPath, [cli, "--package", "docs/project/implementation-package.json"], {
     cwd: root,

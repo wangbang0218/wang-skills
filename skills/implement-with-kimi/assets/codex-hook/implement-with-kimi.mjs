@@ -33,11 +33,12 @@ try {
   };
   current.state.updated_at = now;
   await updateManagedBlock(current.absolute, current.document, current.state);
+  const reviewer = current.state.reviewer_policy?.selected ?? "未选择（继续审查前需执行 select-reviewer）";
 
   if (event.source === "startup") {
-    outputContext(`当前 worktree 存在活动的 implement-with-kimi 运行：spec=${current.state.spec_path}, run_id=${current.state.run_id}, status=${current.state.status}。这是新会话启动，继续任何实施前必须明确执行 resume 或 suspend，不能自动接管。`);
+    outputContext(`当前 worktree 存在活动的 implement-with-kimi 运行：spec=${current.state.spec_path}, run_id=${current.state.run_id}, status=${current.state.status}, reviewer=${reviewer}。这是新会话启动，继续任何实施前必须明确执行 resume 或 suspend，不能自动接管。`);
   } else {
-    outputContext(`Codex 会话刚经历 ${event.source ?? "恢复"}。当前 implement-with-kimi 模块：spec=${current.state.spec_path}, run_id=${current.state.run_id}, status=${current.state.status}。在修改代码、记录测试证据或宣布完成前，必须先执行 rehydrate。`);
+    outputContext(`Codex 会话刚经历 ${event.source ?? "恢复"}。当前 implement-with-kimi 模块：spec=${current.state.spec_path}, run_id=${current.state.run_id}, status=${current.state.status}, reviewer=${reviewer}。在修改代码、记录测试证据或宣布完成前，必须先执行 rehydrate。`);
   }
 } catch (error) {
   outputContext(`implement-with-kimi Hook 失败：${error.message}。不要继续当前模块实施；先手动运行 rehydrate 或修复状态文件。`, true);
@@ -73,7 +74,7 @@ function parseManagedBlock(document) {
   const match = body.match(/^```json\s*\n([\s\S]*?)\n```$/);
   if (!match) throw new Error("状态文件托管区不是 JSON");
   const state = JSON.parse(match[1]);
-  if (state.tool !== "implement-with-kimi" || ![1, 2].includes(state.state_schema_version)) throw new Error("状态文件版本不受支持");
+  if (state.tool !== "implement-with-kimi" || ![1, 2, 3].includes(state.state_schema_version)) throw new Error("状态文件版本不受支持");
   return state;
 }
 
