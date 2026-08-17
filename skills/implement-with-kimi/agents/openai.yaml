@@ -1,5 +1,5 @@
 interface:
-  display_name: "Implement with Reviewer"
+  display_name: "Implement with Kimi"
   short_description: "Run TDD modules with a chosen read-only reviewer"
   default_prompt: "Use $implement-with-kimi to implement this module with TDD; ask me to choose Kimi or Claude Code before starting."
 policy:
