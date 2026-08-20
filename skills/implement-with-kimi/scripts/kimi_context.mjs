@@ -14,6 +14,7 @@ import {
   buildRepositoryCatalog,
   getRepoRoot,
   gitBaseline,
+  INITIAL_CONTEXT_BUDGET,
   reconcileSelectorPaths,
   renderContextPack,
   renderSelectorContext,
@@ -38,7 +39,6 @@ import { buildReviewStateSummary } from "./lib/review-context.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const skillDirectory = path.dirname(scriptDirectory);
-const CONTEXT_BUDGET = 650_000;
 const SHRUNK_CONTEXT_BUDGET = 520_000;
 const EXIT = { GENERAL: 1, BLOCKED: 2, CONFIG: 3, VALIDATION: 4, TRANSIENT: 5, CANCELLED: 6 };
 const LEGACY_COMMANDS = new Set(["enable-reviewer-fallback", "retry-kimi"]);
@@ -292,12 +292,12 @@ async function executeReview(repoRoot, spec, state, mode, options) {
   };
   const catalog = await buildRepositoryCatalog(repoRoot, { specPath: spec.relative_path, authorityPaths: spec.authority_paths });
   let selectorPaths = [];
-  let selection = selectRepositoryContext(catalog, { budgetTokens: CONTEXT_BUDGET });
+  let selection = selectRepositoryContext(catalog, { budgetTokens: INITIAL_CONTEXT_BUDGET });
   if (selection.status === "BLOCKED") throw typedError("BLOCKED", selection.reason);
 
   const total = catalog.catalog.reduce((sum, file) => sum + file.estimated_tokens, 0);
-  if (total > CONTEXT_BUDGET) {
-    const selectorContext = renderSelectorContext(catalog, spec, CONTEXT_BUDGET);
+  if (total > INITIAL_CONTEXT_BUDGET) {
+    const selectorContext = renderSelectorContext(catalog, spec, INITIAL_CONTEXT_BUDGET);
     const selector = await runReviewerNode({
       repoRoot,
       mode: "selector",
@@ -318,7 +318,7 @@ async function executeReview(repoRoot, spec, state, mode, options) {
       progress(`Selector ignored managed state paths: ${reconciledPaths.ignoredManagedStatePaths.join(", ")}`);
     }
     selectorPaths = reconciledPaths.selectedPaths;
-    selection = selectRepositoryContext(catalog, { budgetTokens: CONTEXT_BUDGET, selectorPaths });
+    selection = selectRepositoryContext(catalog, { budgetTokens: INITIAL_CONTEXT_BUDGET, selectorPaths });
     if (selection.status === "BLOCKED") throw typedError("BLOCKED", selection.reason);
   }
 

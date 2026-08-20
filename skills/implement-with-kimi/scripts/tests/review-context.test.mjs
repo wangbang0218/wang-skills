@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildKimiPrompt } from "../lib/prompt.mjs";
-import { renderContextPack } from "../lib/repository.mjs";
+import { INITIAL_CONTEXT_BUDGET, renderContextPack } from "../lib/repository.mjs";
 import { buildReviewStateSummary } from "../lib/review-context.mjs";
 
 test("review context redacts external execution-log paths without losing recorded results", () => {
@@ -41,7 +41,7 @@ test("review context redacts external execution-log paths without losing recorde
   assert.equal(state.evidence[0].log.path, "/tmp/tag-mate-mod002-red.log");
 
   const contextPack = renderContextPack(
-    { selected: [], omitted: [], excluded: [], estimated_tokens: 0, budget_tokens: 650_000 },
+    { selected: [], omitted: [], excluded: [], estimated_tokens: 0, budget_tokens: INITIAL_CONTEXT_BUDGET },
     { state_summary: summary },
   );
   const prompt = buildKimiPrompt({

@@ -6,11 +6,20 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import {
+  INITIAL_CONTEXT_BUDGET,
   reconcileSelectorPaths,
   renderContextPack,
   renderSelectorContext,
   repositoryFingerprint,
+  selectRepositoryContext,
 } from "../lib/repository.mjs";
+
+test("repository context defaults to a 700,000-token initial pack", () => {
+  const selection = selectRepositoryContext({ catalog: [], required_paths: [] });
+
+  assert.equal(INITIAL_CONTEXT_BUDGET, 700_000);
+  assert.equal(selection.budget_tokens, 700_000);
+});
 
 test("selector context preserves the catalog SHA-256", () => {
   const sha256 = "a".repeat(64);
@@ -24,7 +33,7 @@ test("selector context preserves the catalog SHA-256", () => {
       changed: true,
       text: "must not be included",
     }],
-  }, { text: "# Module spec" }, 650_000);
+  }, { text: "# Module spec" }, INITIAL_CONTEXT_BUDGET);
 
   assert.match(context, new RegExp(`"sha256": "${sha256}"`));
   assert.doesNotMatch(context, /must not be included/);
@@ -49,7 +58,7 @@ test("review context manifest preserves omitted file SHA-256", () => {
       estimated_tokens: 900,
     }],
     estimated_tokens: 7,
-    budget_tokens: 650_000,
+    budget_tokens: INITIAL_CONTEXT_BUDGET,
   });
   const manifestStart = context.indexOf("\n") + 1;
   const manifestEnd = context.indexOf("\n<repository-file", manifestStart);

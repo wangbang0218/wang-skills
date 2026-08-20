@@ -6,6 +6,8 @@ import { spawnSync } from "node:child_process";
 
 import { estimateTokens, selectContextFiles } from "./context-pack.mjs";
 
+export const INITIAL_CONTEXT_BUDGET = 700_000;
+
 export function getRepoRoot(cwd = process.cwd()) {
   const result = git(cwd, ["rev-parse", "--show-toplevel"]);
   if (result.status !== 0) throw new Error("implement-with-kimi requires a Git worktree.");
@@ -87,7 +89,7 @@ export function reconcileSelectorPaths(catalogResult, selectorPaths) {
   return result;
 }
 
-export function selectRepositoryContext(catalogResult, { budgetTokens = 650_000, selectorPaths = [] } = {}) {
+export function selectRepositoryContext(catalogResult, { budgetTokens = INITIAL_CONTEXT_BUDGET, selectorPaths = [] } = {}) {
   const required = new Set(catalogResult.required_paths);
   for (const selected of selectorPaths) required.add(selected);
   return selectContextFiles(catalogResult.catalog, { budgetTokens, requiredPaths: [...required] });

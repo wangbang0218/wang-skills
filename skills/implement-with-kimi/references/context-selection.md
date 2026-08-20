@@ -19,10 +19,10 @@ Reserve the selected reviewer's required 1M window approximately as follows:
 
 | Use | Tokens |
 | --- | ---: |
-| Initial context pack | 650,000 |
+| Initial context pack | 700,000 |
 | Additional repository reads | 100,000 |
 | Web research | 50,000 |
-| System, reasoning, Schema, output | about 248,000 |
+| System, reasoning, Schema, output | about 198,000 |
 
 Estimate conservatively without a tokenizer and record both bytes and estimated tokens.
 
