@@ -39,6 +39,64 @@ test("selector context preserves the catalog SHA-256", () => {
   assert.doesNotMatch(context, /must not be included/);
 });
 
+test("selector context separates mandatory tokens from the additional budget", () => {
+  const context = renderSelectorContext({
+    required_paths: ["spec.md"],
+    catalog: [{
+      path: "spec.md",
+      sha256: "a".repeat(64),
+      bytes: 200,
+      estimated_tokens: 100,
+      tier: 1,
+      changed: false,
+      text: "# Module spec",
+    }, {
+      path: "lib/example.mjs",
+      sha256: "b".repeat(64),
+      bytes: 100,
+      estimated_tokens: 40,
+      tier: 3,
+      changed: true,
+      text: "must not be included",
+    }],
+  }, { text: "# Module spec" }, 500);
+
+  assert.match(context, /total_tokens="500" mandatory_tokens="100" additional_tokens="400"/);
+  assert.match(context, /Mandatory paths are always included/);
+  assert.match(context, /"spec\.md"/);
+});
+
+test("repository selection keeps selector paths optional under the fixed budget", () => {
+  const selection = selectRepositoryContext({
+    required_paths: ["spec.md"],
+    catalog: [{
+      path: "spec.md",
+      sha256: "a".repeat(64),
+      estimated_tokens: 100,
+      tier: 1,
+    }, {
+      path: "lib/large.mjs",
+      sha256: "b".repeat(64),
+      estimated_tokens: 450,
+      tier: 3,
+    }, {
+      path: "lib/fits.mjs",
+      sha256: "c".repeat(64),
+      estimated_tokens: 250,
+      tier: 3,
+    }],
+  }, {
+    budgetTokens: 500,
+    selectorPaths: ["lib/large.mjs", "lib/fits.mjs"],
+  });
+
+  assert.equal(selection.status, "READY");
+  assert.deepEqual(selection.selected.map((item) => item.path), ["spec.md", "lib/fits.mjs"]);
+  assert.deepEqual(selection.omitted.map((item) => [item.path, item.reason]), [
+    ["lib/large.mjs", "context_budget"],
+  ]);
+});
+
 test("review context manifest preserves omitted file SHA-256", () => {
   const selectedSha256 = "a".repeat(64);
   const omittedSha256 = "b".repeat(64);

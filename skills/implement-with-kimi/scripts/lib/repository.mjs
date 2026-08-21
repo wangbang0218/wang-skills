@@ -89,10 +89,15 @@ export function reconcileSelectorPaths(catalogResult, selectorPaths) {
   return result;
 }
 
-export function selectRepositoryContext(catalogResult, { budgetTokens = INITIAL_CONTEXT_BUDGET, selectorPaths = [] } = {}) {
-  const required = new Set(catalogResult.required_paths);
-  for (const selected of selectorPaths) required.add(selected);
-  return selectContextFiles(catalogResult.catalog, { budgetTokens, requiredPaths: [...required] });
+export function selectRepositoryContext(catalogResult, {
+  budgetTokens = INITIAL_CONTEXT_BUDGET,
+  selectorPaths,
+} = {}) {
+  return selectContextFiles(catalogResult.catalog, {
+    budgetTokens,
+    requiredPaths: catalogResult.required_paths,
+    candidatePaths: selectorPaths,
+  });
 }
 
 export function renderContextPack({ selected, omitted = [], excluded = [], estimated_tokens, budget_tokens }, metadata = {}) {
@@ -117,6 +122,11 @@ export function renderContextPack({ selected, omitted = [], excluded = [], estim
 }
 
 export function renderSelectorContext(catalogResult, spec, budgetTokens) {
+  const requiredPaths = new Set(catalogResult.required_paths ?? []);
+  const mandatoryTokens = catalogResult.catalog
+    .filter((file) => requiredPaths.has(file.path))
+    .reduce((sum, file) => sum + file.estimated_tokens, 0);
+  const additionalTokens = Math.max(0, budgetTokens - mandatoryTokens);
   const selectorCatalog = catalogResult.catalog.map(({
     path: file,
     sha256,
@@ -126,7 +136,9 @@ export function renderSelectorContext(catalogResult, spec, budgetTokens) {
     changed,
   }) => ({ path: file, sha256, bytes, estimated_tokens, tier, changed }));
   return [
-    `<selector-budget tokens="${budgetTokens}">`,
+    `<selector-budget total_tokens="${budgetTokens}" mandatory_tokens="${mandatoryTokens}" additional_tokens="${additionalTokens}">`,
+    "Mandatory paths are always included by the local gate. Select only additional paths whose combined estimated_tokens fit additional_tokens; do not treat total_tokens as additional budget.",
+    JSON.stringify([...requiredPaths], null, 2),
     spec.text,
     JSON.stringify(selectorCatalog, null, 2),
     "</selector-budget>",

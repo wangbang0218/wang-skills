@@ -63,6 +63,10 @@ test("selector prompt forbids content claims from metadata-only catalog entries"
     contextPack: "<selector-budget />",
   });
   assert.match(prompt, /selector catalog is metadata-only/i);
+  assert.match(prompt, /selected_paths.*additional context only.*mandatory paths are already included/i);
+  assert.doesNotMatch(prompt, /Do not omit mandatory paths/i);
+  assert.match(prompt, /total_tokens.*mandatory_tokens.*additional_tokens/i);
+  assert.match(prompt, /Do not treat total_tokens as additional budget/i);
   assert.match(prompt, /contains no repository file contents/i);
   assert.match(prompt, /never infer.*claim.*contents.*path.*SHA-256.*byte size.*tier.*changed flag/i);
   assert.match(prompt, /SHA-256 identifies.*does not reveal.*contents/i);

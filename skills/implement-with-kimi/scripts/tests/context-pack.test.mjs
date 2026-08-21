@@ -47,3 +47,34 @@ test("selection records every omitted file with a reason", () => {
     },
   ]);
 });
+
+test("selector candidates are fitted locally without becoming mandatory", () => {
+  const catalog = [
+    { path: "spec.md", sha256: "a".repeat(64), estimated_tokens: 100, tier: 1 },
+    { path: "src/a.js", sha256: "b".repeat(64), estimated_tokens: 250, tier: 3 },
+    { path: "src/b.js", sha256: "c".repeat(64), estimated_tokens: 200, tier: 3 },
+    { path: "notes.txt", sha256: "d".repeat(64), estimated_tokens: 25, tier: 6 },
+  ];
+  const result = selectContextFiles(catalog, {
+    budgetTokens: 400,
+    requiredPaths: ["spec.md"],
+    candidatePaths: ["src/a.js", "src/b.js"],
+  });
+
+  assert.equal(result.status, "READY");
+  assert.deepEqual(result.selected.map((item) => item.path), ["spec.md", "src/a.js"]);
+  assert.deepEqual(result.omitted, [
+    {
+      path: "src/b.js",
+      sha256: "c".repeat(64),
+      reason: "context_budget",
+      estimated_tokens: 200,
+    },
+    {
+      path: "notes.txt",
+      sha256: "d".repeat(64),
+      reason: "selector_not_selected",
+      estimated_tokens: 25,
+    },
+  ]);
+});
