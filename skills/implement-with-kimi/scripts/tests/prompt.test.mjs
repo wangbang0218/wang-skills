@@ -25,6 +25,20 @@ test("prompt declares read-only policy and exact output contract", () => {
   assert.match(prompt, /omissions as an array of strings/i);
 });
 
+test("bootstrap classifies unfinished implementation as non-blocking future work", () => {
+  const prompt = buildKimiPrompt({
+    mode: "bootstrap",
+    runId: "run-bootstrap",
+    specPath: "spec.md",
+    effort: "high",
+    contextPack: "<context />",
+  });
+  assert.match(prompt, /Bootstrap is a pre-implementation gate/);
+  assert.match(prompt, /missing production implementation.*MUST be INFO or WARNING, never BLOCKED or CONFLICT/i);
+  assert.match(prompt, /current-gate transition/);
+  assert.match(prompt, /authority\/specification contradiction/i);
+});
+
 test("review-tests treats valid expected Red as gate success rather than missing implementation blocker", () => {
   const prompt = buildKimiPrompt({
     mode: "review-tests",

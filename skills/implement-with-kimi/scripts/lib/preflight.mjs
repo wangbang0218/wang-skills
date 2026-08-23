@@ -8,6 +8,7 @@ const REQUIRED_EFFORTS = ["low", "high", "max"];
 
 export async function preflightKimi({ env = process.env } = {}) {
   assertSupportedNode();
+  assertVoltaNode({ voltaHome: env.VOLTA_HOME });
 
   const binary = await resolveKimiBinary(env);
   const versionResult = run(binary, ["--version"], env);
@@ -40,6 +41,19 @@ export function assertSupportedNode(version = process.versions.node) {
   if (!Number.isInteger(major) || major < 18) {
     throw codedError("CONFIG", "implement-with-kimi requires Node.js 18 or newer.");
   }
+}
+
+export function assertVoltaNode({ execPath = process.execPath, voltaHome = process.env.VOLTA_HOME } = {}) {
+  const executable = path.resolve(execPath);
+  if (typeof voltaHome === "string" && voltaHome.trim() !== "") {
+    const voltaNodeRoot = path.resolve(voltaHome, "tools", "image");
+    const relative = path.relative(voltaNodeRoot, executable);
+    if (relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative)) return;
+    throw codedError("CONFIG", `implement-with-kimi requires a Volta-managed Node executable. Run commands as \`volta run node ...\`; received ${execPath}.`);
+  }
+  const imageMarker = `${path.sep}tools${path.sep}image${path.sep}node${path.sep}`;
+  if (executable.includes(imageMarker)) return;
+  throw codedError("CONFIG", `implement-with-kimi requires a Volta-managed Node executable. Run commands as \`volta run node ...\`; received ${execPath}.`);
 }
 
 export function selectK3Model(catalog, requestedAlias) {

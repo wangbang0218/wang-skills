@@ -8,7 +8,7 @@ import { buildReviewerPrompt, extractJsonObject } from "./prompt.mjs";
 import { repositoryFingerprint } from "./repository.mjs";
 import { buildCapsule, REVIEWER_OUTPUT_SCHEMA, validateReviewerEnvelope } from "./schema.mjs";
 import { validateEnvelopeEvidence } from "./runner.mjs";
-import { assertSupportedNode } from "./preflight.mjs";
+import { assertSupportedNode, assertVoltaNode } from "./preflight.mjs";
 
 const REQUIRED_CLAUDE_FLAGS = [
   "--safe-mode",
@@ -23,6 +23,7 @@ const REQUIRED_CLAUDE_FLAGS = [
 
 export async function preflightClaude({ env = process.env } = {}) {
   assertSupportedNode();
+  assertVoltaNode({ voltaHome: env.VOLTA_HOME });
   const binary = await resolveClaudeBinary(env);
   const version = spawnSync(binary, ["--version"], { env, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 });
   if (version.status !== 0) throw typedError("CONFIG", `Claude Code version check failed: ${version.stderr.trim()}`);

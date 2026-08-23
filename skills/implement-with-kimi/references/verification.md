@@ -12,7 +12,7 @@
 Run:
 
 ```bash
-node --test skills/implement-with-kimi/scripts/tests/*.test.mjs
+volta run node --test skills/implement-with-kimi/scripts/tests/*.test.mjs
 ```
 
 Cover state transitions and v1/v2 migration, explicit reviewer selection and no-fallback routing, Claude isolation arguments, managed/user-note isolation, selector metadata-only prompting and empty findings, evidence hashes and excerpts, symlink escape, context budget selection, model capability checks, JSON capsule limits, Hook merge/removal, Hook lifecycle output, and CLI evidence recording.
@@ -20,7 +20,7 @@ Cover state transitions and v1/v2 migration, explicit reviewer selection and no-
 Check every script:
 
 ```bash
-node --check skills/implement-with-kimi/scripts/kimi_context.mjs
+volta run node --check skills/implement-with-kimi/scripts/kimi_context.mjs
 ```
 
 Also check every `.mjs` file under `scripts/lib/` and `assets/codex-hook/`.

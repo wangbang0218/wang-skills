@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S volta run node
 
 import { readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";

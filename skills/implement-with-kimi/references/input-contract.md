@@ -38,7 +38,7 @@ Domain ownership comes from `authority.md`: PRD owns product behavior, architect
 Before the first reviewer call, run:
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs validate-package \
+volta run node <skill-directory>/scripts/kimi_context.mjs validate-package \
   --package docs/project/implementation-package.json \
   --spec docs/tasks/module.md
 ```

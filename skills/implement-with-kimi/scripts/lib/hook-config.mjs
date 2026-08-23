@@ -5,9 +5,19 @@ export function mergeHookConfig(input, command) {
   const config = structuredClone(input ?? {});
   config.hooks ??= {};
   config.hooks.SessionStart ??= [];
-  const alreadyPresent = config.hooks.SessionStart.some((group) =>
-    Array.isArray(group.hooks) && group.hooks.some((handler) => handler.statusMessage === HOOK_STATUS_MESSAGE),
-  );
+  let alreadyPresent = false;
+  config.hooks.SessionStart = config.hooks.SessionStart.map((group) => {
+    if (!Array.isArray(group.hooks)) return group;
+    let changed = false;
+    const hooks = group.hooks.map((handler) => {
+      if (handler.statusMessage !== HOOK_STATUS_MESSAGE) return handler;
+      alreadyPresent = true;
+      if (handler.command === command) return handler;
+      changed = true;
+      return { ...handler, command };
+    });
+    return changed ? { ...group, hooks } : group;
+  });
   if (!alreadyPresent) {
     config.hooks.SessionStart.push({
       matcher: SESSION_MATCHER,

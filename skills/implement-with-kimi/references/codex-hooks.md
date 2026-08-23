@@ -20,7 +20,7 @@ Codex supports project hooks in `.codex/hooks.json` or `.codex/config.toml`; pro
 Only run after explicit user approval:
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs setup-hook
+volta run node <skill-directory>/scripts/kimi_context.mjs setup-hook
 ```
 
 The command:
@@ -48,7 +48,7 @@ The Hook updates only the managed state block and preserves User notes. It accep
 ## Removal and limitations
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs remove-hook
+volta run node <skill-directory>/scripts/kimi_context.mjs remove-hook
 ```
 
 Removal deletes only the tagged handler. Delete the copied script only when it is byte-identical to the bundled asset; preserve a user-modified script. Do not delete unrelated Hook configuration.

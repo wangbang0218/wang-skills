@@ -44,7 +44,7 @@ New behavior, bug fixes, business rules, and public contracts require a valid Re
 Record each exception while the module is `BOOTSTRAP_READY`, before `tests-written`:
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs record test-exception \
+volta run node <skill-directory>/scripts/kimi_context.mjs record test-exception \
   --spec docs/tasks/module.md --ac AC-001 \
   --reason "Documentation-only acceptance criterion"
 ```
@@ -56,28 +56,28 @@ node <skill-directory>/scripts/kimi_context.mjs record test-exception \
 Use the repository's native tools to run tests. Then record evidence:
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs record tests-written \
+volta run node <skill-directory>/scripts/kimi_context.mjs record tests-written \
   --spec docs/tasks/module.md --ac AC-001 --ac AC-002
 
-node <skill-directory>/scripts/kimi_context.mjs record red-planned \
+volta run node <skill-directory>/scripts/kimi_context.mjs record red-planned \
   --spec docs/tasks/module.md --ac AC-001 \
   --expected-failure "The new behavior is not implemented"
 
-node <skill-directory>/scripts/kimi_context.mjs record red-observed \
+volta run node <skill-directory>/scripts/kimi_context.mjs record red-observed \
   --spec docs/tasks/module.md --command "pnpm test module" \
   --exit-code 1 --matched-expectation --log /tmp/module-red.log
 
-node <skill-directory>/scripts/kimi_context.mjs review-tests \
+volta run node <skill-directory>/scripts/kimi_context.mjs review-tests \
   --spec docs/tasks/module.md --authority docs/architecture.md
 
-node <skill-directory>/scripts/kimi_context.mjs record implementation-started \
+volta run node <skill-directory>/scripts/kimi_context.mjs record implementation-started \
   --spec docs/tasks/module.md
 
-node <skill-directory>/scripts/kimi_context.mjs record green-observed \
+volta run node <skill-directory>/scripts/kimi_context.mjs record green-observed \
   --spec docs/tasks/module.md --command "pnpm test module" \
   --exit-code 0 --log /tmp/module-green.log
 
-node <skill-directory>/scripts/kimi_context.mjs record verification-observed \
+volta run node <skill-directory>/scripts/kimi_context.mjs record verification-observed \
   --spec docs/tasks/module.md --command "pnpm build" \
   --exit-code 0 --log /tmp/module-build.log
 ```

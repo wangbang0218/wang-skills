@@ -34,7 +34,7 @@ Both reviewers require a 1,048,576-token context. Kimi preflight verifies K3 mod
 - Change an active run with:
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs select-reviewer \
+volta run node <skill-directory>/scripts/kimi_context.mjs select-reviewer \
   --spec docs/tasks/module.md \
   --authority docs/architecture.md \
   --reviewer claude-code

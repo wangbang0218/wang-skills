@@ -294,6 +294,8 @@ function stringArray(value) {
 
 function renderBootstrapCommand(spec, authorities, reviewer) {
   const args = [
+    "volta",
+    "run",
     "node",
     "<skill-directory>/scripts/kimi_context.mjs",
     "bootstrap",

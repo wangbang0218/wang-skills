@@ -43,6 +43,8 @@ npx skills add wangbang0218/wang-skills \
 
 让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发。每个模块 run 必须手动选择 Kimi K3 1M 或本机 Claude Code 默认模型作为只读 reviewer；选择后全程沿用，失败时不会自动切换。显式调用该 Skill 并选择 reviewer，即授权其按安全边界读取当前 Git worktree 中的合规文本，无需重复传入代码查看授权。支持纯本地输入校验、Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
 
+运行该 Skill 的 Node 命令统一通过 `volta run node`，使用前需安装并配置 Volta 和 Node.js 18+。
+
 该 Skill 只应显式调用。它没有 secret scanner；使用前请确保敏感信息没有进入仓库。ignored 文件、二进制或不支持的文本、托管状态文件、不可读路径及越界 symlink 不会交给 reviewer。
 
 安装：

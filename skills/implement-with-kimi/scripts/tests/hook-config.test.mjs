@@ -29,3 +29,19 @@ test("hook removal deletes only this skill's tagged entry", () => {
   assert.equal(removed.hooks.SessionStart.length, 1);
   assert.equal(removed.hooks.SessionStart[0].matcher, "startup");
 });
+
+test("hook setup upgrades the owned command to the current Volta-backed command", () => {
+  const configured = {
+    hooks: {
+      SessionStart: [{
+        hooks: [{
+          type: "command",
+          command: "node old-hook.mjs",
+          statusMessage: "implement-with-kimi context recovery",
+        }],
+      }],
+    },
+  };
+  const upgraded = mergeHookConfig(configured, "volta run node new-hook.mjs");
+  assert.equal(upgraded.hooks.SessionStart[0].hooks[0].command, "volta run node new-hook.mjs");
+});

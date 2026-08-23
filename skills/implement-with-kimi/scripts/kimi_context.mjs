@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S volta run node
 
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { sha256File } from "./lib/evidence.mjs";
 import { validateImplementationPackage } from "./lib/document-package.mjs";
 import { HOOK_STATUS_MESSAGE, mergeHookConfig, removeHookConfig } from "./lib/hook-config.mjs";
-import { assertSupportedNode, preflightKimi } from "./lib/preflight.mjs";
+import { assertSupportedNode, assertVoltaNode, preflightKimi } from "./lib/preflight.mjs";
 import { preflightClaude, runClaudeNode } from "./lib/claude-runner.mjs";
 import {
   buildRepositoryCatalog,
@@ -46,6 +46,7 @@ const LEGACY_OPTIONS = ["fallback-reviewer", "reviewer-context", "consent-reposi
 const LEGACY_HOOK_SHA256 = new Set([
   "00af13816e350bf8318c178e7b6ee24c5c910a02bee25b8aaba6a72b2aacf609",
   "aa740f22e079f94710142abe6670bc593dd8ccb7bbe8b5143e529a951da38275",
+  "dd541b46c61bfae44bae740cfc0bea3da3e1428502edc877bd15873fd17afc28",
 ]);
 
 const controller = new AbortController();
@@ -76,6 +77,7 @@ async function main() {
     requireReviewerOption(parsed.options);
   }
   assertSupportedNode();
+  assertVoltaNode();
   const repoRoot = getRepoRoot(process.cwd());
 
   if (parsed.command === "setup-hook") return setupHook(repoRoot);
@@ -439,7 +441,7 @@ async function setupHook(repoRoot) {
     throw typedError("WORKFLOW", "Existing project Hook script differs from the Skill asset; refusing to overwrite it.");
   }
   const config = await readJsonOrDefault(configPath, {});
-  const command = 'node "$(git rev-parse --show-toplevel)/.codex/hooks/implement-with-kimi.mjs"';
+  const command = 'volta run node "$(git rev-parse --show-toplevel)/.codex/hooks/implement-with-kimi.mjs"';
   const merged = mergeHookConfig(config, command);
   await mkdir(targetDirectory, { recursive: true });
   await writeFile(target, assetContent, "utf8");

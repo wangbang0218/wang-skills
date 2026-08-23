@@ -143,16 +143,34 @@ test("setup-hook merges project config and remove-hook removes only the owned sc
   const configured = JSON.parse(await readFile(path.join(root, ".codex/hooks.json"), "utf8"));
   assert.equal(configured.hooks.Stop.length, 1);
   assert.equal(configured.hooks.SessionStart.length, 1);
+  assert.equal(
+    configured.hooks.SessionStart[0].hooks[0].command,
+    'volta run node "$(git rev-parse --show-toplevel)/.codex/hooks/implement-with-kimi.mjs"',
+  );
 
   const remove = run(root, ["remove-hook"]);
   assert.equal(remove.status, 0, remove.stderr || remove.stdout);
   await assertMissing(path.join(root, ".codex/hooks/implement-with-kimi.mjs"));
 });
 
+test("setup-hook upgrades the previous v3 Hook to the Volta-backed asset", async () => {
+  const root = await repository();
+  const currentAsset = await readFile(hookAsset, "utf8");
+  const previousAsset = currentAsset.replace("#!/usr/bin/env -S volta run node", "#!/usr/bin/env node");
+  assert.notEqual(previousAsset, currentAsset);
+  await mkdir(path.join(root, ".codex/hooks"), { recursive: true });
+  await writeFile(path.join(root, ".codex/hooks/implement-with-kimi.mjs"), previousAsset, "utf8");
+
+  const setup = run(root, ["setup-hook"]);
+  assert.equal(setup.status, 0, setup.stderr || setup.stdout);
+  assert.equal(await readFile(path.join(root, ".codex/hooks/implement-with-kimi.mjs"), "utf8"), currentAsset);
+});
+
 test("setup-hook upgrades the exact bundled v2 Hook to the v3-aware asset", async () => {
   const root = await repository();
   const currentAsset = await readFile(hookAsset, "utf8");
   const legacyAsset = currentAsset
+    .replace("#!/usr/bin/env -S volta run node", "#!/usr/bin/env node")
     .replace('  const reviewer = current.state.reviewer_policy?.selected ?? "未选择（继续审查前需执行 select-reviewer）";\n', "")
     .replaceAll(", reviewer=${reviewer}", "")
     .replace("![1, 2, 3].includes", "![1, 2].includes");
@@ -168,6 +186,7 @@ test("setup-hook upgrades the exact bundled v2 Hook to the v3-aware asset", asyn
 test("setup-hook and remove-hook recognize the exact bundled v1 Hook", async () => {
   const currentAsset = await readFile(hookAsset, "utf8");
   const legacyAsset = currentAsset
+    .replace("#!/usr/bin/env -S volta run node", "#!/usr/bin/env node")
     .replace('  const reviewer = current.state.reviewer_policy?.selected ?? "未选择（继续审查前需执行 select-reviewer）";\n', "")
     .replaceAll(", reviewer=${reviewer}", "")
     .replace("![1, 2, 3].includes(state.state_schema_version)", "state.state_schema_version !== 1");

@@ -19,7 +19,7 @@ test("consumer validation emits two exact bootstrap commands without calling a r
   assert.equal(direct.status, "READY");
   assert.equal(direct.bootstrap_commands.length, 2);
   assert.deepEqual(direct.bootstrap_commands.map((item) => item.reviewer), ["kimi", "claude-code"]);
-  const commandPrefix = "node '<skill-directory>/scripts/kimi_context.mjs' bootstrap --spec docs/tasks/core.md --reviewer";
+  const commandPrefix = "volta run node '<skill-directory>/scripts/kimi_context.mjs' bootstrap --spec docs/tasks/core.md --reviewer";
   const authorityArgs = "--authority docs/project/implementation-package.json --authority docs/project/authority.md --authority docs/product/prd.md --authority docs/architecture/architecture.md --goal none";
   assert.equal(direct.bootstrap_commands[0].command, `${commandPrefix} kimi ${authorityArgs}`);
   assert.equal(direct.bootstrap_commands[1].command, `${commandPrefix} claude-code ${authorityArgs}`);

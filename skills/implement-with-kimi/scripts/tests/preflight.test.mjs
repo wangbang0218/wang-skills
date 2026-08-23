@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertSupportedNode, selectK3Model } from "../lib/preflight.mjs";
+import { assertSupportedNode, assertVoltaNode, selectK3Model } from "../lib/preflight.mjs";
 
 const catalog = {
   models: {
@@ -33,4 +33,21 @@ test("common reviewer preflight requires Node.js 18 or newer", () => {
   assert.doesNotThrow(() => assertSupportedNode("18.0.0"));
   assert.throws(() => assertSupportedNode("17.9.1"), /Node\.js 18 or newer/);
   assert.throws(() => assertSupportedNode("invalid"), /Node\.js 18 or newer/);
+});
+
+test("runtime preflight requires a Volta-managed Node executable", () => {
+  const voltaHome = "/tmp/iwk-volta";
+  assert.doesNotThrow(() => assertVoltaNode({
+    voltaHome,
+    execPath: `${voltaHome}/tools/image/node/24.14.1/bin/node`,
+  }));
+  assert.throws(() => assertVoltaNode({
+    voltaHome,
+    execPath: "/usr/local/bin/node",
+  }), /Volta-managed Node/);
+  assert.doesNotThrow(() => assertVoltaNode({
+    execPath: `${voltaHome}/tools/image/node/24.14.1/bin/node`,
+    voltaHome: "",
+  }));
+  assert.throws(() => assertVoltaNode({ execPath: "/usr/local/bin/node", voltaHome: "" }), /Volta-managed Node/);
 });

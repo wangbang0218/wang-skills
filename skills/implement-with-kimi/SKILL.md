@@ -7,7 +7,7 @@ description: "Implement one documented project module at a time with strict test
 
 Use Codex as the only writer and executor. Use the reviewer only to read, retrieve, cross-check, and return evidence-backed JSON. Treat project documents and code as truth; never treat reviewer output as authority by itself.
 
-Resolve all bundled paths relative to this `SKILL.md`. Require Node.js 18+ and a Git worktree. Do not install, upgrade, log in, or mutate reviewer configuration automatically. Read [references/reviewer-selection.md](references/reviewer-selection.md) before selecting or changing a reviewer.
+Resolve all bundled paths relative to this `SKILL.md`. Require Volta with Node.js 18+ and a Git worktree. Run every bundled Node command through `volta run node`; direct script execution is also Volta-backed and the CLI rejects a non-Volta Node runtime. Do not fall back to a system `node`. Do not install, upgrade, log in, or mutate reviewer configuration automatically. Read [references/reviewer-selection.md](references/reviewer-selection.md) before selecting or changing a reviewer.
 
 ## Start one module
 
@@ -20,7 +20,7 @@ Resolve all bundled paths relative to this `SKILL.md`. Require Node.js 18+ and a
 7. Run one emitted command, for example:
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs bootstrap \
+volta run node <skill-directory>/scripts/kimi_context.mjs bootstrap \
   --spec docs/tasks/module.md \
   --reviewer kimi \
   --authority docs/architecture.md \
@@ -54,7 +54,7 @@ For `review-tests`, a valid expected Red caused by missing production behavior i
 Run `rehydrate` before continuing after compaction, clear, resume, or material uncertainty:
 
 ```bash
-node <skill-directory>/scripts/kimi_context.mjs rehydrate \
+volta run node <skill-directory>/scripts/kimi_context.mjs rehydrate \
   --spec docs/tasks/module.md \
   --authority docs/architecture.md \
   --authority docs/prd.md
