@@ -45,6 +45,8 @@ npx skills add wangbang0218/wang-skills \
 
 运行该 Skill 的 Node 命令统一通过 `volta run node`，使用前需安装并配置 Volta 和 Node.js 18+。
 
+Claude reviewer 会优先使用 Volta 管理的 Claude Code；需要指定其他绝对路径时设置 `CLAUDE_BIN`，Node 镜像中的旧 Claude 副本不会被静默使用。
+
 该 Skill 只应显式调用。它没有 secret scanner；使用前请确保敏感信息没有进入仓库。ignored 文件、二进制或不支持的文本、托管状态文件、不可读路径及越界 symlink 不会交给 reviewer。
 
 安装：

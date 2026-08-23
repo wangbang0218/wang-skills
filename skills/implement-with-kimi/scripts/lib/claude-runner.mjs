@@ -24,14 +24,19 @@ const REQUIRED_CLAUDE_FLAGS = [
 export async function preflightClaude({ env = process.env } = {}) {
   assertSupportedNode();
   assertVoltaNode({ voltaHome: env.VOLTA_HOME });
-  const binary = await resolveClaudeBinary(env);
+  const resolved = await resolveClaudeBinary(env);
+  const { binary } = resolved;
   const version = spawnSync(binary, ["--version"], { env, encoding: "utf8", maxBuffer: 4 * 1024 * 1024 });
   if (version.status !== 0) throw typedError("CONFIG", `Claude Code version check failed: ${version.stderr.trim()}`);
   const help = spawnSync(binary, ["--help"], { env, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 });
   if (help.status !== 0) throw typedError("CONFIG", `Unable to inspect Claude Code capabilities: ${help.stderr.trim()}`);
   const missing = REQUIRED_CLAUDE_FLAGS.filter((flag) => !help.stdout.includes(flag));
   if (missing.length > 0) throw typedError("CONFIG", `Claude Code lacks required isolation flags: ${missing.join(", ")}`);
-  return { binary, version: version.stdout.trim() || version.stderr.trim() };
+  return {
+    binary,
+    binary_source: resolved.source,
+    version: version.stdout.trim() || version.stderr.trim(),
+  };
 }
 
 export async function runClaudeNode({
@@ -82,6 +87,8 @@ export async function runClaudeNode({
       envelope.model = {
         runner: "claude-code",
         cli_version: preflight.version,
+        binary_path: preflight.binary,
+        binary_source: preflight.binary_source ?? "provided",
         reported_models: Object.keys(wrapper.modelUsage ?? {}),
         requested_effort: "max",
         required_context_size: 1_048_576,
@@ -161,23 +168,74 @@ async function invokeClaude({ binary, cwd, prompt, signal }) {
   });
 }
 
-async function resolveClaudeBinary(env) {
+export async function resolveClaudeBinary(env = process.env) {
   if (env.CLAUDE_BIN) {
     if (!path.isAbsolute(env.CLAUDE_BIN)) throw typedError("CONFIG", "CLAUDE_BIN must be an absolute path.");
     await assertExecutable(env.CLAUDE_BIN);
-    return env.CLAUDE_BIN;
+    return { binary: env.CLAUDE_BIN, source: "explicit" };
   }
+
+  const voltaBinary = await resolveVoltaClaudeBinary(env);
+  if (voltaBinary) return voltaBinary;
+
+  let firstCandidate = null;
   for (const directory of String(env.PATH || "").split(path.delimiter)) {
     if (!directory) continue;
     const candidate = path.join(directory, process.platform === "win32" ? "claude.exe" : "claude");
     try {
       await access(candidate, constants.X_OK);
-      return candidate;
+      firstCandidate = candidate;
+      break;
     } catch {
       // Continue searching PATH.
     }
   }
+  if (firstCandidate) {
+    if (isNodeImageClaudeBinary(firstCandidate)) {
+      throw typedError(
+        "CONFIG",
+        `Claude Code resolved to a Node image binary (${firstCandidate}), which may be stale. Set CLAUDE_BIN to an absolute Volta-managed Claude path or install Claude through Volta.`,
+      );
+    }
+    return { binary: firstCandidate, source: "path" };
+  }
   throw typedError("CONFIG", "Claude Code executable was not found. Set CLAUDE_BIN to an absolute path or add claude to PATH.");
+}
+
+async function resolveVoltaClaudeBinary(env) {
+  const executableName = process.platform === "win32" ? "claude.exe" : "claude";
+  const voltaHome = typeof env.VOLTA_HOME === "string" ? env.VOLTA_HOME.trim() : "";
+  if (voltaHome) {
+    const shim = path.join(voltaHome, "bin", executableName);
+    if (await isExecutable(shim)) return { binary: shim, source: "volta-shim" };
+  }
+
+  const result = spawnSync("volta", ["which", "claude"], {
+    env,
+    encoding: "utf8",
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  if (result.status === 0) {
+    const candidate = result.stdout.trim().split(/\r?\n/).filter(Boolean).at(-1);
+    if (candidate && path.isAbsolute(candidate) && !isNodeImageClaudeBinary(candidate) && await isExecutable(candidate)) {
+      return { binary: candidate, source: "volta-which" };
+    }
+  }
+  return null;
+}
+
+async function isExecutable(filePath) {
+  try {
+    await access(filePath, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isNodeImageClaudeBinary(filePath) {
+  const marker = `${path.sep}tools${path.sep}image${path.sep}node${path.sep}`;
+  return path.resolve(filePath).includes(marker);
 }
 
 async function assertExecutable(filePath) {

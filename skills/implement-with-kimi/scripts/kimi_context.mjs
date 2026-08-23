@@ -280,7 +280,7 @@ async function executeReview(repoRoot, spec, state, mode, options) {
       }
     }
     claudePreflight ??= await preflightClaude();
-    progress(`Claude Code ${claudePreflight.version}; configured default provider/model; mode ${node.mode}`);
+    progress(`Claude Code ${claudePreflight.version}; binary ${claudePreflight.binary} (${claudePreflight.binary_source}); configured default provider/model; mode ${node.mode}`);
     try {
       return await runClaudeNode({ ...node, preflight: claudePreflight });
     } catch (error) {

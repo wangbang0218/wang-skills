@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
-import { claudeArguments, claudeEnvironment, preflightClaude, runClaudeNode } from "../lib/claude-runner.mjs";
+import { claudeArguments, claudeEnvironment, preflightClaude, resolveClaudeBinary, runClaudeNode } from "../lib/claude-runner.mjs";
 
 function envelope(runId, compacted = false) {
   return {
@@ -104,7 +104,43 @@ test("Claude preflight feature-detects isolation flags and runs a structured rev
   });
   assert.equal(result.envelope.reviewer, "claude-code");
   assert.equal(result.envelope.model.requested_effort, "max");
+  assert.equal(result.envelope.model.binary_path, binary);
+  assert.equal(result.envelope.model.binary_source, "explicit");
   assert.deepEqual(result.envelope.model.reported_models, ["configured-default"]);
+});
+
+test("Claude resolution prefers the Volta shim over a Node image binary", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "iwk-claude-resolution-"));
+  const voltaHome = path.join(root, "volta");
+  const shim = path.join(voltaHome, "bin", "claude");
+  const nodeImage = path.join(root, "tools", "image", "node", "24.14.1", "bin");
+  const stale = path.join(nodeImage, "claude");
+  await mkdir(path.dirname(shim), { recursive: true });
+  await mkdir(nodeImage, { recursive: true });
+  await writeFile(shim, "#!/bin/sh\n", "utf8");
+  await writeFile(stale, "#!/bin/sh\n", "utf8");
+  await chmod(shim, 0o755);
+  await chmod(stale, 0o755);
+
+  const resolved = await resolveClaudeBinary({
+    VOLTA_HOME: voltaHome,
+    PATH: `${nodeImage}${path.delimiter}${path.join(voltaHome, "bin")}`,
+  });
+  assert.deepEqual(resolved, { binary: shim, source: "volta-shim" });
+});
+
+test("Claude resolution rejects a Node image binary when no Volta Claude is available", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "iwk-claude-stale-"));
+  const nodeImage = path.join(root, "tools", "image", "node", "24.14.1", "bin");
+  const stale = path.join(nodeImage, "claude");
+  await mkdir(nodeImage, { recursive: true });
+  await writeFile(stale, "#!/bin/sh\n", "utf8");
+  await chmod(stale, 0o755);
+
+  await assert.rejects(
+    resolveClaudeBinary({ VOLTA_HOME: path.join(root, "missing-volta"), PATH: nodeImage }),
+    (error) => error.kind === "CONFIG" && /Node image binary/.test(error.message),
+  );
 });
 
 test("Claude compaction fails closed instead of shrinking the context", async () => {

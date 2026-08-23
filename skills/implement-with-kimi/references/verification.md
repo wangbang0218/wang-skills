@@ -15,7 +15,7 @@ Run:
 volta run node --test skills/implement-with-kimi/scripts/tests/*.test.mjs
 ```
 
-Cover state transitions and v1/v2 migration, explicit reviewer selection and no-fallback routing, Claude isolation arguments, managed/user-note isolation, selector metadata-only prompting and empty findings, evidence hashes and excerpts, symlink escape, context budget selection, model capability checks, JSON capsule limits, Hook merge/removal, Hook lifecycle output, and CLI evidence recording.
+Cover state transitions and v1/v2 migration, explicit reviewer selection and no-fallback routing, Claude isolation arguments and Volta-versus-Node-image binary resolution, managed/user-note isolation, selector metadata-only prompting and empty findings, evidence hashes and excerpts, symlink escape, context budget selection, model capability checks, JSON capsule limits, Hook merge/removal, Hook lifecycle output, and CLI evidence recording.
 
 Check every script:
 

@@ -53,6 +53,8 @@ Invoke the local `claude` executable without `--model` or provider-specific envi
 - explicit denial of Bash, Edit, Write, NotebookEdit, Agent, Skill, and AskUserQuestion;
 - `--effort max` and structured JSON output.
 
+Resolve the executable in this order: an explicit absolute `CLAUDE_BIN`, the Volta-managed Claude returned by the Volta shim or `volta which claude`, then a non-Volta PATH entry. A `claude` executable under `tools/image/node/<version>/bin` is rejected when no Volta-managed Claude is available because it may be an older Node-image copy. Audit metadata records the selected binary path and resolution source separately from the CLI version and reported model.
+
 Claude Code reads from the current Git worktree. Do not add directories. Use its reported model only as audit metadata; never use it as an allowlist or proof of context capacity. Never record credentials, API keys, or provider secrets.
 
 ## Context and retries

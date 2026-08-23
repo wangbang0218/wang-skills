@@ -7,7 +7,7 @@ description: "Implement one documented project module at a time with strict test
 
 Use Codex as the only writer and executor. Use the reviewer only to read, retrieve, cross-check, and return evidence-backed JSON. Treat project documents and code as truth; never treat reviewer output as authority by itself.
 
-Resolve all bundled paths relative to this `SKILL.md`. Require Volta with Node.js 18+ and a Git worktree. Run every bundled Node command through `volta run node`; direct script execution is also Volta-backed and the CLI rejects a non-Volta Node runtime. Do not fall back to a system `node`. Do not install, upgrade, log in, or mutate reviewer configuration automatically. Read [references/reviewer-selection.md](references/reviewer-selection.md) before selecting or changing a reviewer.
+Resolve all bundled paths relative to this `SKILL.md`. Require Volta with Node.js 18+ and a Git worktree. Run every bundled Node command through `volta run node`; direct script execution is also Volta-backed and the CLI rejects a non-Volta Node runtime. Claude Code resolution is Volta-first, with `CLAUDE_BIN` as the explicit override; a stale Claude under the Node image is rejected. Do not fall back to a system `node`. Do not install, upgrade, log in, or mutate reviewer configuration automatically. Read [references/reviewer-selection.md](references/reviewer-selection.md) before selecting or changing a reviewer.
 
 ## Start one module
 
