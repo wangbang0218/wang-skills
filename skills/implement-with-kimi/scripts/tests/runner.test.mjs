@@ -7,7 +7,7 @@ import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { sha256File } from "../lib/evidence.mjs";
-import { isTransientKimiError, runKimiNode } from "../lib/runner.mjs";
+import { createSubmissionBudget, isTransientKimiError, runKimiNode } from "../lib/runner.mjs";
 
 const testsDirectory = path.dirname(fileURLToPath(import.meta.url));
 const fakeAgent = path.join(testsDirectory, "fixtures/fake-acp.mjs");
@@ -17,172 +17,179 @@ test("explicit quota exhaustion is not retried as a transient 429", () => {
   assert.equal(isTransientKimiError(new Error("429 engine overload")), true);
 });
 
+test("Kimi audit canonicalizes evidence and records measurable usage without invented cost", async () => {
+  const root = await createRepo("iwk-kimi-success-");
+  await writeFile(path.join(root, "source.txt"), "root\n  nested\n", "utf8");
+  const sha256 = await sha256File(path.join(root, "source.txt"));
+  const binary = await fakeKimi(root);
+  const events = [];
+  const previous = process.env.FAKE_RESPONSE_TEXT;
+  try {
+    process.env.FAKE_RESPONSE_TEXT = JSON.stringify(envelope({ runId: "run-audit", sha256, excerpt: "nested" }));
+    const result = await runKimiNode({
+      repoRoot: root,
+      mode: "audit",
+      runId: "run-audit",
+      specPath: "spec.md",
+      contextPack: "<context />",
+      preflight: kimiPreflight(binary),
+      estimatedInitialTokens: 321,
+      onInvocation: async (event) => events.push(event),
+    });
+
+    assert.equal(result.envelope.attempts, 1);
+    assert.equal(result.envelope.findings[0].evidence[0].excerpt, "  nested");
+    assert.deepEqual(events.map((event) => [event.phase, event.entry.status]), [
+      ["started", "RUNNING"],
+      ["finished", "SUCCEEDED"],
+    ]);
+    assert.equal(events[1].entry.usage.estimated_initial_tokens, 321);
+    assert.equal(events[1].entry.usage.total_cost_usd, null);
+    assert.equal(events[1].entry.usage.input_tokens, null);
+    assert.equal(typeof events[1].entry.usage.extra_read_tokens, "number");
+  } finally {
+    restoreEnv("FAKE_RESPONSE_TEXT", previous);
+  }
+});
+
+test("Kimi Schema repair and retry share a hard two-submission budget", async () => {
+  const root = await createRepo("iwk-kimi-repair-");
+  const binary = await fakeKimi(root);
+  const budget = createSubmissionBudget();
+  const events = [];
+  const previous = process.env.FAKE_RESPONSE_TEXT;
+  try {
+    process.env.FAKE_RESPONSE_TEXT = "{}";
+    await assert.rejects(runKimiNode({
+      repoRoot: root,
+      mode: "audit",
+      runId: "run-repair",
+      specPath: "spec.md",
+      contextPack: "<context />",
+      preflight: kimiPreflight(binary),
+      submissionBudget: budget,
+      onInvocation: async (event) => events.push(event),
+    }), (error) => error.kind === "SCHEMA");
+  } finally {
+    restoreEnv("FAKE_RESPONSE_TEXT", previous);
+  }
+
+  assert.equal(budget.used, 2);
+  assert.deepEqual(events.filter((event) => event.phase === "finished").map((event) => event.entry.status), ["FAILED", "FAILED"]);
+  assert.deepEqual(events.filter((event) => event.phase === "finished").map((event) => event.entry.attempt), [1, 2]);
+});
+
+test("Kimi material evidence failures are ledgered once and never Schema-retried", async () => {
+  const root = await createRepo("iwk-kimi-evidence-");
+  await writeFile(path.join(root, "source.txt"), "root\n  nested\n", "utf8");
+  const sha256 = await sha256File(path.join(root, "source.txt"));
+  const binary = await fakeKimi(root);
+  const budget = createSubmissionBudget();
+  const events = [];
+  const previous = process.env.FAKE_RESPONSE_TEXT;
+  try {
+    process.env.FAKE_RESPONSE_TEXT = JSON.stringify(envelope({ runId: "run-mismatch", sha256, excerpt: "different" }));
+    await assert.rejects(runKimiNode({
+      repoRoot: root,
+      mode: "audit",
+      runId: "run-mismatch",
+      specPath: "spec.md",
+      contextPack: "<context />",
+      preflight: kimiPreflight(binary),
+      submissionBudget: budget,
+      onInvocation: async (event) => events.push(event),
+    }), (error) => error.kind === "EVIDENCE" && /excerpt mismatch/.test(error.message));
+  } finally {
+    restoreEnv("FAKE_RESPONSE_TEXT", previous);
+  }
+
+  assert.equal(budget.used, 1);
+  const finished = events.find((event) => event.phase === "finished").entry;
+  assert.equal(finished.status, "FAILED");
+  assert.equal(finished.error.kind, "EVIDENCE");
+});
+
+test("Kimi detects a concurrent worktree mutation as STALE and ledgers the failed submission", async () => {
+  const root = await createRepo("iwk-kimi-stale-");
+  await writeFile(path.join(root, "source.txt"), "root\n  nested\n", "utf8");
+  const sha256 = await sha256File(path.join(root, "source.txt"));
+  const binary = path.join(root, "fake-kimi-stale");
+  await writeFile(binary, `#!/usr/bin/env node
+import { writeFileSync } from "node:fs";
+writeFileSync(${JSON.stringify(path.join(root, "concurrent.txt"))}, "changed during review\\n");
+await import(${JSON.stringify(pathToFileURL(fakeAgent).href)});
+`, "utf8");
+  await chmod(binary, 0o755);
+  const budget = createSubmissionBudget();
+  const events = [];
+  const previous = process.env.FAKE_RESPONSE_TEXT;
+  try {
+    process.env.FAKE_RESPONSE_TEXT = JSON.stringify(envelope({ runId: "run-stale", sha256, excerpt: "  nested" }));
+    await assert.rejects(runKimiNode({
+      repoRoot: root,
+      mode: "audit",
+      runId: "run-stale",
+      specPath: "spec.md",
+      contextPack: "<context />",
+      preflight: kimiPreflight(binary),
+      submissionBudget: budget,
+      onInvocation: async (event) => events.push(event),
+    }), (error) => error.kind === "STALE");
+  } finally {
+    restoreEnv("FAKE_RESPONSE_TEXT", previous);
+  }
+
+  assert.equal(budget.used, 1);
+  const finished = events.find((event) => event.phase === "finished").entry;
+  assert.equal(finished.status, "FAILED");
+  assert.equal(finished.error.kind, "STALE");
+});
+
 function envelope({ runId, sha256, excerpt, evidencePath = "source.txt" }) {
   return {
     schema_version: 1,
-    mode: "bootstrap",
+    mode: "audit",
     run_id: runId,
     summary: "Review complete.",
-    findings: [
-      {
-        id: "F-001",
-        severity: "WARNING",
-        title: "Evidence fixture",
-        explanation: "The fixture exercises local evidence validation.",
-        evidence: [
-          {
-            path: evidencePath,
-            sha256,
-            line_start: 2,
-            line_end: 2,
-            excerpt,
-            claim: "The nested line exists.",
-          },
-        ],
-      },
-    ],
-    ac_coverage: [],
-    next_actions: [],
-    external_research: { status: "NOT_REQUESTED", sources: [] },
-    context: { completeness: "FULL", omissions: [], compacted: false },
-  };
-}
-
-function selectorEnvelope({ runId, findings }) {
-  return {
-    schema_version: 1,
-    mode: "selector",
-    run_id: runId,
-    summary: "Selection complete.",
-    findings,
-    ac_coverage: [],
-    next_actions: [],
-    external_research: { status: "NOT_REQUESTED", sources: [] },
-    context: { completeness: "FULL", omissions: [], compacted: false },
-    selected_paths: ["source.txt"],
-  };
-}
-
-test("selector repairs a hallucinated finding before evidence validation", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "iwk-selector-runner-"));
-  const harness = await mkdtemp(path.join(tmpdir(), "iwk-selector-harness-"));
-  spawnSync("git", ["init", "-q"], { cwd: root });
-  await writeFile(path.join(root, "source.txt"), "/// Reserved placeholder.\nlibrary;\n", "utf8");
-  const sha256 = await sha256File(path.join(root, "source.txt"));
-  const runId = "run-selector-hallucination";
-  const hallucinated = selectorEnvelope({
-    runId,
     findings: [{
-      id: "SEL-001",
-      severity: "INFO",
-      title: "Imagined source export",
-      explanation: "The catalog metadata does not contain this source text.",
+      id: "F-001",
+      severity: "WARNING",
+      title: "Evidence fixture",
+      explanation: "The fixture exercises local evidence validation.",
       evidence: [{
-        path: "source.txt",
+        path: evidencePath,
         sha256,
-        line_start: 1,
-        line_end: 1,
-        excerpt: "export 'src/source.dart';",
-        claim: "Invented from a conventional package layout.",
+        line_start: 2,
+        line_end: 2,
+        excerpt,
+        claim: "The nested line exists.",
       }],
     }],
-  });
-  const corrected = selectorEnvelope({ runId, findings: [] });
-  const counter = path.join(harness, "attempt.txt");
-  const wrapper = path.join(harness, "fake-kimi");
-  await writeFile(wrapper, `#!/usr/bin/env node
-import { readFileSync, writeFileSync } from "node:fs";
-let attempt = 0;
-try { attempt = Number(readFileSync(${JSON.stringify(counter)}, "utf8")); } catch {}
-writeFileSync(${JSON.stringify(counter)}, String(attempt + 1));
-process.env.FAKE_RESPONSE_TEXT = attempt === 0
-  ? ${JSON.stringify(JSON.stringify(hallucinated))}
-  : ${JSON.stringify(JSON.stringify(corrected))};
-await import(${JSON.stringify(pathToFileURL(fakeAgent).href)});
-`, "utf8");
-  await chmod(wrapper, 0o755);
-
-  const result = await runKimiNode({
-    repoRoot: root,
-    mode: "selector",
-    runId,
-    specPath: "spec.md",
-    contextPack: "<selector-budget />",
-    acIds: [],
-    preflight: {
-      binary: wrapper,
-      model_alias: "kimi-code/k3",
-      model: "k3",
-      max_context_size: 1_048_576,
-    },
-  });
-
-  assert.equal(result.envelope.attempts, 2);
-  assert.deepEqual(result.envelope.findings, []);
-  assert.deepEqual(result.envelope.selected_paths, ["source.txt"]);
-});
-
-test("runner canonicalizes omitted source indentation and does not Schema-retry material evidence failures", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "iwk-runner-"));
-  spawnSync("git", ["init", "-q"], { cwd: root });
-  await writeFile(path.join(root, "source.txt"), "root\n  nested\n", "utf8");
-  const sha256 = await sha256File(path.join(root, "source.txt"));
-  const wrapper = path.join(root, "fake-kimi");
-  await writeFile(wrapper, `#!/usr/bin/env node\nimport ${JSON.stringify(pathToFileURL(fakeAgent).href)};\n`, "utf8");
-  await chmod(wrapper, 0o755);
-  const preflight = {
-    binary: wrapper,
-    model_alias: "kimi-code/k3",
-    model: "k3",
-    max_context_size: 1_048_576,
+    ac_coverage: [],
+    next_actions: [],
+    external_research: { status: "NOT_REQUESTED", sources: [] },
+    context: { completeness: "FULL", omissions: [], compacted: false },
   };
+}
 
-  const previous = process.env.FAKE_RESPONSE_TEXT;
-  try {
-    process.env.FAKE_RESPONSE_TEXT = JSON.stringify(envelope({ runId: "run-indent", sha256, excerpt: "nested" }));
-    const result = await runKimiNode({
-      repoRoot: root,
-      mode: "bootstrap",
-      runId: "run-indent",
-      specPath: "spec.md",
-      contextPack: "<context />",
-      preflight,
-    });
-    assert.equal(result.envelope.attempts, 1);
-    assert.equal(result.envelope.findings[0].evidence[0].excerpt, "  nested");
+async function createRepo(prefix) {
+  const root = await mkdtemp(path.join(tmpdir(), prefix));
+  spawnSync("git", ["init", "-q"], { cwd: root });
+  return root;
+}
 
-    process.env.FAKE_RESPONSE_TEXT = JSON.stringify(envelope({ runId: "run-mismatch", sha256, excerpt: "different" }));
-    await assert.rejects(
-      runKimiNode({
-        repoRoot: root,
-        mode: "bootstrap",
-        runId: "run-mismatch",
-        specPath: "spec.md",
-        contextPack: "<context />",
-        preflight,
-      }),
-      (error) => error.kind === "EVIDENCE" && /excerpt mismatch/.test(error.message),
-    );
+async function fakeKimi(root) {
+  const binary = path.join(root, "fake-kimi");
+  await writeFile(binary, `#!/usr/bin/env node\nimport ${JSON.stringify(pathToFileURL(fakeAgent).href)};\n`, "utf8");
+  await chmod(binary, 0o755);
+  return binary;
+}
 
-    process.env.FAKE_RESPONSE_TEXT = JSON.stringify(envelope({
-      runId: "run-absolute",
-      sha256,
-      excerpt: "  nested",
-      evidencePath: "/tmp/red.log",
-    }));
-    await assert.rejects(
-      runKimiNode({
-        repoRoot: root,
-        mode: "bootstrap",
-        runId: "run-absolute",
-        specPath: "spec.md",
-        contextPack: "<context />",
-        preflight,
-      }),
-      (error) => error.kind === "EVIDENCE" && /repository-relative/.test(error.message),
-    );
-  } finally {
-    if (previous === undefined) delete process.env.FAKE_RESPONSE_TEXT;
-    else process.env.FAKE_RESPONSE_TEXT = previous;
-  }
-});
+function kimiPreflight(binary) {
+  return { binary, model_alias: "kimi-code/k3", model: "k3", max_context_size: 1_048_576 };
+}
+
+function restoreEnv(name, previous) {
+  if (previous === undefined) delete process.env[name];
+  else process.env[name] = previous;
+}

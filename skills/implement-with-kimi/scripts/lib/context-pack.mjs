@@ -6,7 +6,6 @@ export function estimateTokens(text) {
 export function selectContextFiles(catalog, {
   budgetTokens,
   requiredPaths = [],
-  candidatePaths,
 }) {
   if (!Number.isFinite(budgetTokens) || budgetTokens <= 0) throw new Error("budgetTokens must be positive.");
   const required = new Set(requiredPaths);
@@ -30,11 +29,8 @@ export function selectContextFiles(catalog, {
   const selected = [...mandatory];
   const omitted = [];
   let used = mandatoryTokens;
-  const candidateSet = Array.isArray(candidatePaths)
-    ? new Set(candidatePaths.filter((item) => !required.has(item)))
-    : null;
   const candidates = catalog
-    .filter((item) => !required.has(item.path) && (!candidateSet || candidateSet.has(item.path)))
+    .filter((item) => !required.has(item.path))
     .sort(compareCatalog);
   for (const item of candidates) {
     if (used + item.estimated_tokens <= budgetTokens) {
@@ -49,17 +45,14 @@ export function selectContextFiles(catalog, {
       });
     }
   }
-  if (candidateSet) {
-    for (const item of catalog.filter((entry) => !required.has(entry.path) && !candidateSet.has(entry.path)).sort(compareCatalog)) {
-      omitted.push({
-        path: item.path,
-        sha256: item.sha256,
-        reason: "selector_not_selected",
-        estimated_tokens: item.estimated_tokens,
-      });
-    }
-  }
-  return { status: "READY", selected, omitted, estimated_tokens: used, budget_tokens: budgetTokens };
+  return {
+    status: "READY",
+    selected,
+    omitted,
+    estimated_tokens: used,
+    mandatory_tokens: mandatoryTokens,
+    budget_tokens: budgetTokens,
+  };
 }
 
 function compareCatalog(left, right) {

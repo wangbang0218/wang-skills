@@ -1,86 +1,52 @@
-# Kimi protocol
-
-## Contents
-
-- Preflight
-- ACP lifecycle
-- Tool policy
-- Result envelope
-- Evidence
-- Retry and cancellation
+# Kimi audit/query protocol
 
 ## Preflight
 
-Resolve `KIMI_BIN` only when it is an absolute executable path; otherwise search `PATH`. Run `kimi --version`, `kimi doctor config`, and `kimi provider list --json`. Never install, upgrade, log in, or alter configuration.
+Preflight Kimi only after an explicitly authorized `--execute-reviewer`. Resolve absolute `KIMI_BIN` or search PATH, then run version, configuration doctor, and provider listing. Never install, upgrade, log in, or modify configuration.
 
-Require the configured model's underlying id to be `k3`, `maxContextSize >= 1048576`, and `supportEfforts` to include `low`, `high`, and `max`. Do not fall back to K3-256k or another model.
+Require underlying model id `k3`, `maxContextSize >= 1048576`, and effort capabilities including `low`, `high`, and `max`. Do not fall back to K3-256k or another model.
 
-Kimi Code documents `kimi acp` as JSON-RPC over stdin/stdout with clean stdout and diagnostic stderr. The implementation negotiates stable ACP protocol version 1 and uses `initialize -> session/new -> session/set_config_option -> session/prompt -> session/cancel` as needed:
+Kimi Code uses ACP JSON-RPC over stdin/stdout:
 
 - <https://moonshotai.github.io/kimi-code/en/reference/kimi-acp>
 - <https://agentclientprotocol.com/>
 
-## ACP lifecycle
+## Lifecycle
 
-Create a fresh session per selector, bootstrap, test review, rehydration, audit, and query. Never load or resume a Kimi session. Select `model=kimi-code/k3` and effort:
+Only `audit` and `query` create reviewer sessions. Create a fresh ACP session for each submitted prompt; never load or resume a prior session. Negotiate protocol version 1, select `model=kimi-code/k3`, and use `max` effort for both modes.
 
-- selector: low
-- bootstrap, review-tests, rehydrate, query: high
-- audit: max
+Bootstrap, test validation, rehydration, resume, Hook recovery, and context selection are local and create no Kimi process.
 
-Use a 30-second startup/handshake idle timeout, a 5-minute selector idle timeout, and a 15-minute main-node idle timeout. Reset only on meaningful unique progress. Do not impose a total execution deadline.
+## Read-only policy
 
-## Tool policy
+Advertise repository-scoped text read/search and web fetch/search, with no terminal or filesystem write support. Reject paths outside the current worktree, including symlink escape.
 
-Advertise ACP filesystem read support but no write or terminal support. Permit repository-scoped text reads, search, and web fetch/search. Reject paths that resolve outside the Git worktree, including symlink escape.
+Reject or cancel Write, Edit, delete, move, Bash, execution, Agent/AgentSwarm, Skill, user questioning, media/binary reads, background work, cron, and project-state mutation.
 
-Reject or cancel:
+Inspect structured ACP fields rather than free-form titles. Standard read/search/fetch calls use `kind`; repository paths use `locations` and `rawInput.path`; transitional `FetchURL` calls reported as `kind=other` require the exact read-only `{ url: <http(s)> }` shape. A provisional lazy call must later provide structured input. ACP guards are a runtime boundary plus prompt constraint, not a general OS sandbox.
 
-- Write, Edit, delete, or move
-- Bash and other execution
-- Agent and AgentSwarm
-- Skill invocation and user questioning
-- media/binary reads
-- background, cron, or project-state mutation
+## Result and evidence
 
-Give the first permission-controlled violation a denial/correction. Cancel on repeated violations. Because some Kimi tools are auto-approved, inspect streamed `tool_call` messages and cancel immediately when an auto-approved call is outside the allowed read/search/fetch set. Classify calls from structured ACP fields, never from keywords in the free-form `title`: use `kind` for standard read/search/fetch calls, `locations` and `rawInput.path` for repository-boundary checks, and the exact read-only `{ url: <http(s) URL> }` `rawInput` shape for Kimi ACP versions that temporarily report `FetchURL` as `kind=other`. A lazy `kind=other`, `status=pending` call with no `rawInput` is provisional only; require a later structured update before the prompt ends and reject it otherwise. Treat ACP guards as a runtime boundary plus prompt constraint, not as a general OS sandbox.
+Require exactly one JSON object with current mode `audit` or `query`, matching run id, complete AC coverage, findings, actions, external research, and context completeness. Compute status locally with precedence `CONFLICT > BLOCKED > WARNING > READY`.
 
-## Result envelope
+Local evidence requires repository-relative path, exact SHA-256, 1-based line range, exact non-empty excerpt, and claim. Re-read and validate it after return. Reject absolute paths, OS temporary paths, diagnostic directories, raw-result paths, and symlink escape.
 
-Require one JSON object with `schema_version: 1`, English keys, and Chinese explanations:
+Recorded execution logs are metadata. The audit projection removes their external paths and keeps only command, exit code, hash, size, and a short excerpt. The full evidence history stays in state instead of being repeated in the prompt.
 
-```json
-{
-  "schema_version": 1,
-  "mode": "audit",
-  "run_id": "uuid",
-  "summary": "...",
-  "findings": [],
-  "ac_coverage": [],
-  "next_actions": [],
-  "external_research": { "status": "NOT_REQUESTED", "sources": [] },
-  "context": { "completeness": "FULL", "omissions": [], "compacted": false }
-}
-```
+The validator may only make deterministic source-backed corrections: restore omitted leading indentation or repair a unique exact excerpt's line range. Ambiguous or material whitespace mismatches fail as Evidence, not Schema.
 
-Compute the top status locally from findings with precedence `CONFLICT > BLOCKED > WARNING > READY`; do not trust a model-supplied top status. Finding severity is relative to the requested mode and its next legal transition: `BLOCKED` means the current gate cannot safely pass, not merely that work required by a later gate remains. In `review-tests`, valid expected Red caused by missing production behavior is success evidence and cannot itself be `BLOCKED`; in `rehydrate`, do not perpetuate that expected gap from persisted state. If Kimi reports its own context compaction, discard the response and retry once with a smaller pack.
+External evidence requires HTTP(S) URL, title, access time, and claim. Project authorities remain normative.
 
-In `selector` mode, the catalog is metadata-only: it includes path, SHA-256, size, token estimate, tier, and changed state, but no repository file body. Require `findings: []` and no evidence. Never infer content from catalog metadata; select a potentially relevant path so the main reviewer can receive and inspect its actual text.
+## Shared two-submission cap
 
-Keep the full validated JSON in an OS temporary diagnostic directory. Return a maximum 32 KiB capsule to Codex containing every conflict/blocker, important warnings, AC summary, next actions, omissions, and a raw reference. Retrieve details through `inspect --finding`.
+At most two reviewer prompts may be submitted for one authorized audit/query command. Initial submission, Schema repair, context shrink, transient/network retry, and retry after a sent request share this cap. Startup or handshake failure before prompt submission does not consume it.
 
-## Evidence
+An oversized/compacted context may trigger one deterministic smaller initial pack only when the shared budget remains; mandatory context still cannot be truncated. Invalid JSON/Schema may receive one repair prompt. Do not retry Evidence, Policy, authority, conflict, blocker, cancellation, or `STALE`. Explicit billing/monthly/rolling quota exhaustion is not transient.
 
-Local evidence requires repository-relative `path`, exact lowercase SHA-256, 1-based line range, exact non-empty excerpt, and claim. Re-read the file and validate all fields after Kimi returns. Recorded execution logs may originate outside the repository; redact their diagnostic paths before building Kimi context and mark their remaining command, exit code, hash, and excerpt as metadata rather than citeable local-file evidence. Never copy a path embedded in recorded-log metadata into local evidence unless Kimi independently locates and reads that repository file, then returns its repository-relative path. Never accept an OS temporary path, diagnostic directory, `raw_result_ref`, or another absolute path as local evidence.
+On SIGINT/SIGTERM, send cancellation, allow a short shutdown grace period, and reject partial output. Never call Claude as fallback.
 
-The validated envelope must retain the exact source excerpt. After the hash matches, the validator may deterministically restore line-leading spaces or tabs omitted by the model when the supplied range is otherwise exact, or when the indentation-insensitive excerpt occurs exactly once; it replaces the excerpt with source text and records the original value. It may also normalize an incorrect range when an exact excerpt occurs once. Ambiguous excerpts, missing excerpts, and internal or trailing whitespace differences fail closed. External evidence requires HTTP(S) URL, title, access time, and claim. Project sources remain authoritative; external sources may expose staleness or conflict but cannot silently override them.
+Each submitted prompt is ledgered as running then succeeded/failed. Kimi ACP does not provide authoritative provider token/cache/USD totals, so those fields remain `null`; do not fabricate costs.
 
-## Retry and cancellation
+## Legacy compatibility
 
-- Retry network, 429, and 5xx failures at most twice with backoff.
-- Retry an oversized context once after deterministic shrinking.
-- Retry invalid JSON/Schema once in a fresh session with a repair instruction. Do not classify local evidence mismatches as Schema errors.
-- Do not retry deterministic configuration, conflict, blocker, policy, or evidence failures.
-- Bound combined retries; never create an infinite retry product.
-- On SIGINT/SIGTERM, send `session/cancel`, allow a short shutdown grace period, then terminate. Mark the node `CANCELLED`; never reuse partial streamed output.
-- Do not transient-retry an explicit billing, monthly, or rolling quota exhaustion. Surface the selected Kimi failure without automatically switching reviewer; see [reviewer-selection.md](reviewer-selection.md).
+No selector, bootstrap review, test review, or reviewer rehydration prompt can be generated or executed. The validator retains legacy mode decoding only so `inspect` can read old stored raw results.

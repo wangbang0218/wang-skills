@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { access, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -49,14 +50,32 @@ export async function runClaudeNode({
   acIds,
   preflight,
   signal,
+  submissionBudget = { used: 0, max: 2 },
+  estimatedInitialTokens = null,
+  onInvocation = async () => {},
   onProgress = () => {},
 }) {
+  if (!["audit", "query"].includes(mode)) throw new Error(`Unsupported Claude mode: ${mode}`);
   const diagnostics = await mkdtemp(path.join(tmpdir(), `implement-with-kimi-claude-${mode}-`));
   await writeFile(path.join(diagnostics, "context-pack.txt"), contextPack, "utf8");
   const before = repositoryFingerprint(repoRoot);
   let repairError = null;
 
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  while (submissionBudget.used < submissionBudget.max) {
+    const attempt = ++submissionBudget.used;
+    const startedAtMs = Date.now();
+    const invocation = {
+      invocation_id: randomUUID(),
+      mode,
+      reviewer: "claude-code",
+      attempt,
+      started_at: new Date(startedAtMs).toISOString(),
+      finished_at: null,
+      status: "RUNNING",
+      diagnostic_ref: diagnostics,
+      usage: claudeUsage(null, estimatedInitialTokens),
+    };
+    await onInvocation({ phase: "started", entry: invocation });
     const prompt = buildReviewerPrompt({
       mode,
       runId,
@@ -67,17 +86,37 @@ export async function runClaudeNode({
       repairError,
       reviewer: "local Claude Code using its configured default provider and model",
     });
-    onProgress(`Claude Code reviewer; mode ${mode}; effort max; attempt ${attempt}`);
-    const response = await invokeClaude({ binary: preflight.binary, cwd: repoRoot, prompt, signal });
-    await writeFile(path.join(diagnostics, `raw-cli-${attempt}.json`), response.stdout, "utf8");
+    onProgress(`Claude Code reviewer; mode ${mode}; effort max; prompt submission ${attempt}/${submissionBudget.max}`);
+    let response;
+    try {
+      response = await invokeClaude({ binary: preflight.binary, cwd: repoRoot, prompt, signal });
+    } catch (rawError) {
+      const error = rawError.kind ? rawError : typedError("CLAUDE_FAILED", rawError.message);
+      await onInvocation({
+        phase: "finished",
+        entry: finishInvocation(invocation, diagnostics, startedAtMs, claudeUsage(null, estimatedInitialTokens), error),
+      });
+      if (isTransientClaudeFailure(error) && submissionBudget.used < submissionBudget.max) continue;
+      throw error;
+    }
+    const rawCliPath = path.join(diagnostics, `raw-cli-${attempt}.json`);
+    await writeFile(rawCliPath, response.stdout, "utf8");
+    let wrapper = parseOptionalJson(response.stdout);
     if (response.status !== 0) {
       const combined = `${response.stderr}\n${response.stdout}`.trim();
-      if (isContextFailure(combined)) throw typedError("CONTEXT_OVERSIZE", `Claude reviewer cannot process the required 1M context: ${combined}`);
-      throw typedError("CLAUDE_FAILED", combined || `Claude Code exited with status ${response.status}.`);
+      const error = isContextFailure(combined)
+        ? typedError("CONTEXT_OVERSIZE", `Claude reviewer cannot process the required 1M context: ${combined}`)
+        : typedError("CLAUDE_FAILED", combined || `Claude Code exited with status ${response.status}.`);
+      await onInvocation({
+        phase: "finished",
+        entry: finishInvocation(invocation, rawCliPath, startedAtMs, claudeUsage(wrapper, estimatedInitialTokens), error),
+      });
+      if (isTransientClaudeFailure(error) && submissionBudget.used < submissionBudget.max) continue;
+      throw error;
     }
 
     try {
-      const wrapper = JSON.parse(response.stdout);
+      wrapper = JSON.parse(response.stdout);
       if (wrapper.is_error === true) throw new Error(wrapper.result || "Claude Code reported an error.");
       const candidate = wrapper.structured_output ?? extractJsonObject(wrapper.result);
       const rawResultPath = path.join(diagnostics, `raw-response-${attempt}.json`);
@@ -103,22 +142,74 @@ export async function runClaudeNode({
       envelope.snapshot = { before, after, stale: false };
       envelope.attempts = attempt;
       envelope.reviewer = "claude-code";
+      await onInvocation({
+        phase: "finished",
+        entry: finishInvocation(invocation, rawResultPath, startedAtMs, claudeUsage(wrapper, estimatedInitialTokens)),
+      });
       return { envelope, capsule: buildCapsule(envelope), diagnostics };
     } catch (error) {
-      if (error.kind || error.code === "REVIEWER_CONTEXT_COMPACTED" || isContextFailure(error.message)) {
-        if (error.code === "REVIEWER_CONTEXT_COMPACTED" || isContextFailure(error.message)) {
-          throw typedError("CONTEXT_OVERSIZE", "Claude reviewer compacted or truncated the required 1M context.");
-        }
-        throw error;
-      }
-      if (attempt === 1) {
+      const classified = error.code === "REVIEWER_CONTEXT_COMPACTED" || isContextFailure(error.message)
+        ? typedError("CONTEXT_OVERSIZE", "Claude reviewer compacted or truncated the required 1M context.")
+        : error.kind ? error : typedError("SCHEMA_REPAIRABLE", error.message);
+      await onInvocation({
+        phase: "finished",
+        entry: finishInvocation(invocation, rawCliPath, startedAtMs, claudeUsage(wrapper, estimatedInitialTokens), classified),
+      });
+      if (classified.kind === "SCHEMA_REPAIRABLE" && submissionBudget.used < submissionBudget.max) {
         repairError = error.message;
         continue;
       }
-      throw typedError("SCHEMA", error.message);
+      if (classified.kind === "SCHEMA_REPAIRABLE") throw typedError("SCHEMA", classified.message);
+      throw classified;
     }
   }
-  throw typedError("SCHEMA", "Claude reviewer Schema repair budget was exhausted.");
+  throw typedError("RETRY_EXHAUSTED", "Reviewer prompt submission budget was exhausted.");
+}
+
+function parseOptionalJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function claudeUsage(wrapper, estimatedInitialTokens) {
+  const usage = wrapper?.usage ?? null;
+  return {
+    source: wrapper ? "provider" : "unavailable",
+    input_tokens: usage?.input_tokens ?? null,
+    output_tokens: usage?.output_tokens ?? null,
+    cache_read_tokens: usage?.cache_read_input_tokens ?? null,
+    cache_creation_tokens: usage?.cache_creation_input_tokens ?? null,
+    total_cost_usd: Object.hasOwn(wrapper ?? {}, "total_cost_usd") ? wrapper.total_cost_usd : null,
+    estimated_initial_tokens: estimatedInitialTokens,
+    extra_read_tokens: null,
+    provider_report: wrapper ? {
+      usage: wrapper.usage ?? null,
+      modelUsage: wrapper.modelUsage ?? null,
+      total_cost_usd: Object.hasOwn(wrapper, "total_cost_usd") ? wrapper.total_cost_usd : null,
+      duration_ms: wrapper.duration_ms ?? null,
+      duration_api_ms: wrapper.duration_api_ms ?? null,
+      num_turns: wrapper.num_turns ?? null,
+    } : null,
+  };
+}
+
+function finishInvocation(invocation, diagnosticRef, startedAtMs, usage, error = null) {
+  return {
+    ...invocation,
+    finished_at: new Date().toISOString(),
+    status: error ? "FAILED" : "SUCCEEDED",
+    diagnostic_ref: diagnosticRef,
+    duration_ms: Date.now() - startedAtMs,
+    usage,
+    ...(error ? { error: { kind: error.kind ?? "GENERAL", message: error.message } } : {}),
+  };
+}
+
+function isTransientClaudeFailure(error) {
+  return /429|5\d\d|network|ECONN|EAI_AGAIN|temporar/i.test(`${error.kind ?? ""} ${error.message ?? ""}`);
 }
 
 export function claudeArguments() {

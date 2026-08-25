@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { buildKimiPrompt, extractJsonObject } from "../lib/prompt.mjs";
 
-test("prompt declares read-only policy and exact output contract", () => {
+test("audit prompt declares read-only policy and exact evidence contract", () => {
   const prompt = buildKimiPrompt({
     mode: "audit",
     runId: "run-1",
@@ -12,80 +12,40 @@ test("prompt declares read-only policy and exact output contract", () => {
     contextPack: "<context />",
   });
   assert.match(prompt, /Never write\/edit\/delete\/move/);
-  assert.match(prompt, /schema_version/);
   assert.match(prompt, /Mode: audit/);
-  assert.match(prompt, /leading.*space.*tab/i);
+  assert.match(prompt, /BLOCKED means the current VERIFIED module cannot safely become COMPLETED/);
   assert.match(prompt, /repository-relative/);
-  assert.match(prompt, /manifest.*authoritative SHA-256.*selected or omitted/i);
-  assert.match(prompt, /copy its matching sha256 verbatim.*never leave it blank/i);
-  assert.match(prompt, /state_summary.*execution-log path/i);
-  assert.match(prompt, /\/tmp/);
-  assert.match(prompt, /including command or excerpt/);
-  assert.match(prompt, /next_actions.*array of non-empty strings/i);
-  assert.match(prompt, /omissions as an array of strings/i);
+  assert.match(prompt, /authoritative SHA-256/);
+  assert.match(prompt, /byte-for-byte/);
+  assert.match(prompt, /recorded execution logs.*metadata/i);
+  assert.match(prompt, /schema_version must be 1/);
+  assert.match(prompt, /next_actions must be an array of non-empty strings/);
 });
 
-test("bootstrap classifies unfinished implementation as non-blocking future work", () => {
+test("query prompt is explicitly advisory and carries the focused question", () => {
   const prompt = buildKimiPrompt({
-    mode: "bootstrap",
-    runId: "run-bootstrap",
+    mode: "query",
+    runId: "run-query",
     specPath: "spec.md",
-    effort: "high",
+    effort: "max",
+    question: "Does the API remain compatible?",
     contextPack: "<context />",
   });
-  assert.match(prompt, /Bootstrap is a pre-implementation gate/);
-  assert.match(prompt, /missing production implementation.*MUST be INFO or WARNING, never BLOCKED or CONFLICT/i);
-  assert.match(prompt, /current-gate transition/);
-  assert.match(prompt, /authority\/specification contradiction/i);
+  assert.match(prompt, /advisory query changes a milestone/i);
+  assert.match(prompt, /Focused question: Does the API remain compatible\?/);
+  assert.match(prompt, /final audit remains authoritative/i);
 });
 
-test("review-tests treats valid expected Red as gate success rather than missing implementation blocker", () => {
-  const prompt = buildKimiPrompt({
-    mode: "review-tests",
-    runId: "run-red",
-    specPath: "spec.md",
-    effort: "high",
-    contextPack: "<context />",
-  });
-  assert.match(prompt, /valid expected Red.*success evidence/i);
-  assert.match(prompt, /missing production behavior.*never.*BLOCKED/i);
-  assert.match(prompt, /Do not require Green.*implementation.*verification.*audit/i);
-  assert.match(prompt, /ac_coverage.*test coverage/i);
-  assert.match(prompt, /BLOCKED.*prevents the tests from being accepted/i);
-});
-
-test("rehydrate distinguishes expected unfinished work from a current workflow blocker", () => {
-  const prompt = buildKimiPrompt({
-    mode: "rehydrate",
-    runId: "run-rehydrate",
-    specPath: "spec.md",
-    effort: "high",
-    contextPack: "<context />",
-  });
-  assert.match(prompt, /unfinished implementation.*not.*workflow blocker/i);
-  assert.match(prompt, /RED_CONFIRMED.*valid expected Red.*never.*BLOCKED/i);
-  assert.match(prompt, /Re-evaluate.*state_summary.*BLOCKED/i);
-  assert.match(prompt, /cannot advance.*milestone/i);
-});
-
-test("selector prompt forbids content claims from metadata-only catalog entries", () => {
-  const prompt = buildKimiPrompt({
-    mode: "selector",
-    runId: "run-selector",
-    specPath: "spec.md",
-    effort: "high",
-    contextPack: "<selector-budget />",
-  });
-  assert.match(prompt, /selector catalog is metadata-only/i);
-  assert.match(prompt, /selected_paths.*additional context only.*mandatory paths are already included/i);
-  assert.doesNotMatch(prompt, /Do not omit mandatory paths/i);
-  assert.match(prompt, /total_tokens.*mandatory_tokens.*additional_tokens/i);
-  assert.match(prompt, /Do not treat total_tokens as additional budget/i);
-  assert.match(prompt, /contains no repository file contents/i);
-  assert.match(prompt, /never infer.*claim.*contents.*path.*SHA-256.*byte size.*tier.*changed flag/i);
-  assert.match(prompt, /SHA-256 identifies.*does not reveal.*contents/i);
-  assert.match(prompt, /set findings to \[\].*no evidence/i);
-  assert.match(prompt, /add its path to selected_paths.*actual text.*do not describe imagined contents/i);
+test("removed reviewer modes fail closed instead of rebuilding legacy prompts", () => {
+  for (const mode of ["selector", "bootstrap", "review-tests", "rehydrate"]) {
+    assert.throws(() => buildKimiPrompt({
+      mode,
+      runId: "run-legacy",
+      specPath: "spec.md",
+      effort: "max",
+      contextPack: "<context />",
+    }), new RegExp(`Unsupported prompt mode: ${mode}`));
+  }
 });
 
 test("JSON extraction tolerates a fenced repair response", () => {

@@ -6,162 +6,196 @@ import {
   createInitialState,
   deriveStatePath,
   parseStateDocument,
+  recordReviewInvocation,
   renderStateDocument,
   selectReviewer,
 } from "../lib/state.mjs";
+
+const sha = "a".repeat(64);
+const mapping = { ac_id: "AC-001", path: "test/module.test.mjs", sha256: sha };
 
 test("deriveStatePath pairs a Markdown specification with one state document", () => {
   assert.equal(deriveStatePath("docs/tasks/payment.md"), "docs/tasks/payment.state.md");
   assert.throws(() => deriveStatePath("docs/tasks/payment.txt"), /Markdown/);
 });
 
-test("state rendering round-trips managed JSON and preserves user notes", () => {
+test("state v4 rendering round-trips managed JSON and preserves user notes", () => {
   const state = createInitialState({
     specPath: "docs/tasks/payment.md",
-    specSha256: "a".repeat(64),
+    specSha256: sha,
     runId: "run-1",
     now: "2026-07-31T00:00:00.000Z",
   });
   const document = renderStateDocument(state, "Keep this note exactly.\n");
   const parsed = parseStateDocument(document);
 
+  assert.equal(parsed.state.state_schema_version, 4);
   assert.deepEqual(parsed.state, state);
   assert.equal(parsed.userNotes, "Keep this note exactly.\n");
-  assert.match(document, /implement-with-kimi:managed:start/);
 });
 
-test("version 1 state migrates to v3 without losing Kimi review evidence", () => {
-  const state = createInitialState({ specPath: "spec.md", specSha256: "f".repeat(64), runId: "legacy" });
+test("version 1 state migrates through v3 to v4 without losing Kimi evidence", () => {
+  const state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "legacy" });
   state.state_schema_version = 1;
   delete state.reviewer_policy;
-  delete state.reviewer_failover;
   delete state.last_reviewer_review;
-  state.last_kimi_review = { reviewer: "claude-code", mode: "rehydrate", status: "READY", raw_result_ref: "/tmp/result.json" };
+  state.last_kimi_review = { mode: "rehydrate", status: "READY", raw_result_ref: "/tmp/result.json" };
   const parsed = parseStateDocument(renderStateDocument(state, "legacy note\n"));
-  assert.equal(parsed.state.state_schema_version, 3);
-  assert.equal(parsed.state.run_id, "legacy");
+
+  assert.equal(parsed.state.state_schema_version, 4);
   assert.equal(parsed.state.last_reviewer_review.reviewer, "kimi");
   assert.equal(parsed.state.last_reviewer_review.raw_result_ref, "/tmp/result.json");
   assert.equal(parsed.state.reviewer_policy.selected, null);
-  assert.equal(parsed.state.history.at(-1).details.reviewer_selection_required, true);
+  assert.equal(parsed.state.semantic_review.status, "PENDING");
   assert.equal(parsed.userNotes, "legacy note\n");
 });
 
-test("version 2 migration preserves execution evidence and records the complete legacy route", () => {
-  const state = createInitialState({ specPath: "spec.md", specSha256: "a".repeat(64), runId: "legacy-v2" });
+test("version 2 Red state migrates in place to TESTS_WRITTEN with a map requirement", () => {
+  const state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "legacy-v2" });
   state.state_schema_version = 2;
   state.status = "RED_CONFIRMED";
   state.evidence.push({ event: "red-observed", exit_code: 1 });
-  state.unresolved_findings.push({ id: "F-001" });
-  state.past_runs.push({ run_id: "older" });
   state.reviewer_policy = {
     preferred: "kimi",
     fallback: "claude-code",
     repository_consent: true,
     required_context_tokens: 1_048_576,
-    enabled_at: "2026-08-07T00:00:00.000Z",
   };
-  state.reviewer_failover = {
-    active: true,
-    scope: "RUN",
-    reason_code: "KIMI_QUOTA_EXHAUSTED",
-    message: "quota exhausted",
-    activated_at: "2026-08-07T00:01:00.000Z",
-  };
+  state.reviewer_failover = { active: true, message: "quota exhausted" };
   const parsed = parseStateDocument(renderStateDocument(state, "keep\n"));
-  const legacy = parsed.state.history.at(-1).details.legacy_reviewer_routing;
-  assert.equal(parsed.state.state_schema_version, 3);
-  assert.equal(parsed.state.reviewer_policy.selected, null);
+
+  assert.equal(parsed.state.state_schema_version, 4);
+  assert.equal(parsed.state.status, "TESTS_WRITTEN");
+  assert.equal(parsed.state.migration_requirements.test_maps, "PENDING");
   assert.deepEqual(parsed.state.evidence, state.evidence);
-  assert.deepEqual(parsed.state.unresolved_findings, state.unresolved_findings);
-  assert.deepEqual(parsed.state.past_runs, state.past_runs);
-  assert.equal(legacy.repository_consent, true);
-  assert.equal(legacy.required_context_tokens, 1_048_576);
-  assert.equal(legacy.enabled_at, "2026-08-07T00:00:00.000Z");
-  assert.equal(legacy.failover_message, "quota exhausted");
-  assert.equal(legacy.failover_activated_at, "2026-08-07T00:01:00.000Z");
+  assert.equal(parsed.state.reviewer_policy.selected, null);
   assert.equal(parsed.userNotes, "keep\n");
 });
 
-test("reviewer selection authorizes repository access and preserves run evidence", () => {
-  let state = createInitialState({ specPath: "spec.md", specSha256: "a".repeat(64), runId: "selection" });
-  state.evidence.push({ event: "red-observed", exit_code: 1 });
-  state = selectReviewer(state, "claude-code", { now: "2026-08-07T00:00:00.000Z" });
-  assert.equal(state.reviewer_policy.selected, "claude-code");
-  assert.equal(state.reviewer_policy.repository_access_authorized, true);
-  assert.equal(state.reviewer_policy.required_context_tokens, 1_048_576);
-  assert.deepEqual(state.evidence, [{ event: "red-observed", exit_code: 1 }]);
-  assert.deepEqual(state.history.at(-1).details, {
-    previous: null,
-    selected: "claude-code",
-    repository_access_authorized: true,
-    required_context_tokens: 1_048_576,
+test("version 3 post-test state preserves its milestone with explicit legacy provenance", () => {
+  const state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "legacy-v3" });
+  state.state_schema_version = 3;
+  state.status = "TESTS_REVIEWED";
+  const parsed = parseStateDocument(renderStateDocument(state, ""));
+
+  assert.equal(parsed.state.status, "TESTS_VALIDATED");
+  assert.deepEqual(parsed.state.test_validation, {
+    source: "legacy-reviewer",
+    validated_at: state.updated_at,
+    fingerprint: null,
+    legacy: true,
   });
+  assert.equal(parsed.state.migration_requirements.test_maps, "OPTIONAL_LEGACY");
 });
 
-test("state events enforce the TDD transition order", () => {
-  let state = createInitialState({
-    specPath: "docs/tasks/payment.md",
-    specSha256: "b".repeat(64),
-    runId: "run-2",
-    now: "2026-07-31T00:00:00.000Z",
+test("reviewer selection is fixed for one run and authorizes 1M read-only review", () => {
+  let state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "selection" });
+  state = selectReviewer(state, "claude-code", { now: "2026-08-07T00:00:00.000Z" });
+  assert.equal(state.reviewer_policy.selected, "claude-code");
+  assert.equal(state.reviewer_policy.required_context_tokens, 1_048_576);
+  assert.deepEqual(selectReviewer(state, "claude-code"), state);
+  assert.throws(() => selectReviewer(state, "kimi"), /fixed for the run/);
+});
+
+test("state events enforce local test validation before implementation", () => {
+  let state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "run-tdd" });
+  state = applyStateEvent(state, "bootstrap-ready", {});
+  state = applyStateEvent(state, "tests-written", { test_mappings: [mapping], exception_ac_ids: [] });
+  state = applyStateEvent(state, "red-planned", { expected_failure: "missing", ac_ids: ["AC-001"] });
+  state = applyStateEvent(state, "red-observed", {
+    command: "npm test",
+    exit_code: 1,
+    matched_expectation: true,
+    tests: [{ path: mapping.path, sha256: sha }],
   });
+  assert.equal(state.status, "TESTS_WRITTEN");
+  state = applyStateEvent(state, "tests-validated", { source: "local-deterministic", fingerprint: "tests-fp" });
+  state = applyStateEvent(state, "implementation-started", {});
+  state = applyStateEvent(state, "green-observed", {
+    command: "npm test",
+    exit_code: 0,
+    tests: [{ path: mapping.path, sha256: sha }],
+    run_fingerprint: "run-fp",
+  });
+  assert.equal(state.status, "GREEN_CONFIRMED");
+  state = applyStateEvent(state, "verification-observed", {
+    command: "npm run build",
+    exit_code: 0,
+    tests: [],
+    run_fingerprint: "run-fp",
+  });
+  state = applyStateEvent(state, "audited", { review_status: "READY" });
+  state = applyStateEvent(state, "completed", {});
+  assert.equal(state.status, "COMPLETED");
+  assert.equal(state.active, false);
+  assert.equal(state.semantic_review.status, "AUDITED");
+});
 
-  state = applyStateEvent(state, "bootstrap-ready", {}, "2026-07-31T00:01:00.000Z");
-  state = applyStateEvent(state, "tests-written", { ac_ids: ["AC-001"] }, "2026-07-31T00:02:00.000Z");
-  state = applyStateEvent(
-    state,
-    "red-planned",
-    { expected_failure: "missing behavior", ac_ids: ["AC-001"] },
-    "2026-07-31T00:03:00.000Z",
-  );
-  state = applyStateEvent(
-    state,
-    "red-observed",
-    { command: "npm test", exit_code: 1, matched_expectation: true },
-    "2026-07-31T00:04:00.000Z",
-  );
+test("Green remains IMPLEMENTING until every mapped path has current evidence", () => {
+  let state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "run-green" });
+  state = applyStateEvent(state, "bootstrap-ready", {});
+  state = applyStateEvent(state, "tests-written", {
+    test_mappings: [
+      mapping,
+      { ac_id: "AC-002", path: "test/edge.test.mjs", sha256: "b".repeat(64) },
+    ],
+    exception_ac_ids: [],
+  });
+  state = applyStateEvent(state, "tests-validated", { source: "local-deterministic", fingerprint: "tests-fp" });
+  state = applyStateEvent(state, "implementation-started", {});
+  state = applyStateEvent(state, "green-observed", {
+    command: "npm test module",
+    exit_code: 0,
+    tests: [{ path: mapping.path, sha256: sha }],
+    run_fingerprint: "run-fp",
+  });
+  assert.equal(state.status, "IMPLEMENTING");
+});
 
-  assert.equal(state.status, "RED_CONFIRMED");
-  assert.throws(
-    () => applyStateEvent(state, "green-observed", { exit_code: 0 }, "2026-07-31T00:05:00.000Z"),
-    /TESTS_REVIEWED|IMPLEMENTING/,
-  );
+test("all-exception workflow validates locally without fabricated Red", () => {
+  let state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "run-exception" });
+  state = applyStateEvent(state, "bootstrap-ready", {});
+  state = applyStateEvent(state, "test-exception", { reason: "docs", ac_ids: ["AC-001"] });
+  state = applyStateEvent(state, "tests-written", { test_mappings: [], exception_ac_ids: ["AC-001"] });
+  state = applyStateEvent(state, "tests-validated", { source: "local-deterministic", fingerprint: "empty-tests" });
+  state = applyStateEvent(state, "implementation-started", {});
+  state = applyStateEvent(state, "green-observed", {
+    command: "npm run lint",
+    exit_code: 0,
+    tests: [],
+    run_fingerprint: "run-fp",
+  });
+  assert.equal(state.status, "GREEN_CONFIRMED");
+});
+
+test("review invocation ledger upserts failed or successful prompt submissions", () => {
+  let state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "ledger" });
+  state = recordReviewInvocation(state, {
+    invocation_id: "inv-1",
+    mode: "audit",
+    reviewer: "kimi",
+    status: "RUNNING",
+  });
+  state = recordReviewInvocation(state, {
+    invocation_id: "inv-1",
+    status: "FAILED",
+    error: { kind: "SCHEMA", message: "bad output" },
+  });
+  assert.equal(state.review_invocations.length, 1);
+  assert.equal(state.review_invocations[0].status, "FAILED");
 });
 
 test("future state schema versions fail closed", () => {
-  const state = createInitialState({
-    specPath: "spec.md",
-    specSha256: "c".repeat(64),
-    runId: "run-3",
-  });
+  const state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "future" });
   state.state_schema_version = 99;
-  const document = renderStateDocument(state, "");
-  assert.throws(() => parseStateDocument(document), /newer|upgrade/i);
+  assert.throws(() => parseStateDocument(renderStateDocument(state, "")), /newer|upgrade/i);
 });
 
 test("repeated blocking preserves the original previous status", () => {
-  let state = createInitialState({
-    specPath: "spec.md",
-    specSha256: "d".repeat(64),
-    runId: "run-4",
-  });
+  let state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "blocked" });
   state = applyStateEvent(state, "bootstrap-ready", {});
   state = applyStateEvent(state, "blocked", { reason: "first" });
   state = applyStateEvent(state, "blocked", { reason: "second" });
   assert.equal(state.status, "BLOCKED");
   assert.equal(state.previous_status, "BOOTSTRAP_READY");
-});
-
-test("all-exception workflow may reach test review without fabricating Red", () => {
-  let state = createInitialState({
-    specPath: "spec.md",
-    specSha256: "e".repeat(64),
-    runId: "run-5",
-  });
-  state = applyStateEvent(state, "bootstrap-ready", {});
-  state = applyStateEvent(state, "test-exception", { reason: "documentation only", ac_ids: ["AC-001"] });
-  state = applyStateEvent(state, "tests-written", { ac_ids: [], exception_ac_ids: ["AC-001"] });
-  state = applyStateEvent(state, "tests-reviewed", { review_status: "READY" });
-  assert.equal(state.status, "TESTS_REVIEWED");
 });

@@ -1,16 +1,8 @@
-# Reviewer selection
+# Reviewer selection and authorization
 
-## Contents
+## Fixed per-run choice
 
-- Selection and authorization
-- Routing and changes
-- Claude Code isolation
-- Context and retries
-- Recovery and migration
-
-## Selection and authorization
-
-Require one explicit reviewer for every module run:
+Require exactly one reviewer at bootstrap:
 
 ```bash
 --reviewer kimi
@@ -22,51 +14,51 @@ or:
 --reviewer claude-code
 ```
 
-Never infer a default. If the Skill invocation does not name a reviewer, ask the user to choose Kimi or Claude Code before bootstrap. Explicitly invoking the Skill and choosing a reviewer authorizes that reviewer to read eligible text within the current Git worktree; do not request separate repository consent or accept the removed consent flags. The Skill has no secret scanner, so keep secrets out of the repository.
+Never infer a default. Choosing a reviewer records the intended read-only reviewer and the 1,048,576-token capability contract, but bootstrap performs no reviewer preflight or model call.
 
-Both reviewers require a 1,048,576-token context. Kimi preflight verifies K3 model configuration and capabilities. Choosing Claude Code attests that its configured default model supports 1M; do not bind it to Anthropic, DeepSeek, Qwen, or another provider or model id.
+The choice is immutable for the run. `select-reviewer` may populate a missing migrated selection or idempotently confirm the current reviewer; it cannot change Kimi to Claude or vice versa. Start a new run to make a different choice. Never automatically fall back after any failure.
 
-## Routing and changes
+## Preview authorization
 
-- Persist the selected reviewer for the run. Use it for selector, bootstrap, test review, rehydration, audit, and query nodes.
-- Instantiate and preflight only the selected reviewer. Never probe or call the other reviewer.
-- Never switch automatically after authentication, quota, subscription, service, context, Schema, Evidence, Policy, stale, authority, or workflow failures. Preserve the failure and require an explicit choice.
-- Change an active run with:
+Before `audit` or `query` execution:
 
-```bash
-volta run node <skill-directory>/scripts/kimi_context.mjs select-reviewer \
-  --spec docs/tasks/module.md \
-  --authority docs/architecture.md \
-  --reviewer claude-code
-```
+1. Run `review-preview --mode audit|query`, or run the mode without `--execute-reviewer`.
+2. Show the complete `REVIEW_READY` preview to the user.
+3. Obtain explicit authorization for that concrete reviewer, mode, initial context estimate, access boundary, retry cap, and cost disclosure.
+4. Only then add `--execute-reviewer`.
 
-Preflight the target reviewer before atomically changing state. Preserve the run id, milestones, evidence, findings, warnings, archived runs, and User notes. Record the previous and selected reviewer in history.
+An earlier Skill invocation, reviewer choice, repository-read authorization, or previous audit approval is not sufficient. Every new audit/query execution requires its own preview approval.
+
+Preflight only the selected reviewer after `--execute-reviewer` is present. Never probe the other reviewer. A preflight failure occurs before prompt submission and consumes no invocation attempt.
 
 ## Claude Code isolation
 
-Invoke the local `claude` executable without `--model` or provider-specific environment changes. Inherit its current default provider, model, and authentication. Require feature support for:
+Invoke local Claude Code without `--model` or provider-specific overrides. Inherit its configured provider, model, and authentication. Require:
 
-- `--safe-mode` to disable CLAUDE.md, skills, plugins, hooks, MCP, custom commands/agents, output styles, and workflows;
-- `--no-session-persistence`;
+- `--safe-mode` and `--no-session-persistence`;
 - `--permission-mode dontAsk`;
-- built-in tools limited to `Read,Grep,Glob,WebFetch,WebSearch`;
+- only `Read,Grep,Glob,WebFetch,WebSearch`;
 - explicit denial of Bash, Edit, Write, NotebookEdit, Agent, Skill, and AskUserQuestion;
-- `--effort max` and structured JSON output.
+- structured JSON output and `--effort max`;
+- `DISABLE_COMPACT=1` and `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576` on the subprocess.
 
-Resolve the executable in this order: an explicit absolute `CLAUDE_BIN`, the Volta-managed Claude returned by the Volta shim or `volta which claude`, then a non-Volta PATH entry. A `claude` executable under `tools/image/node/<version>/bin` is rejected when no Volta-managed Claude is available because it may be an older Node-image copy. Audit metadata records the selected binary path and resolution source separately from the CLI version and reported model.
+Resolve Claude in this order: absolute `CLAUDE_BIN`, Volta shim, `volta which claude`, then a non-Volta PATH entry. Reject a binary under `tools/image/node/<version>/bin` when no Volta-managed Claude is available. Persist binary path/source, CLI version, and provider-reported models as audit metadata, never as proof of capacity.
 
-Claude Code reads from the current Git worktree. Do not add directories. Use its reported model only as audit metadata; never use it as an allowlist or proof of context capacity. Never record credentials, API keys, or provider secrets.
+Claude may autonomously read/search the current worktree and use web tools. It may not execute commands, write, spawn agents, use project skills/hooks/plugins, or persist a session. Fail closed on compaction, truncation, prompt overflow, or insufficient context.
 
-## Context and retries
+## Submission and cost limits
 
-Set `DISABLE_COMPACT=1` and `CLAUDE_CODE_MAX_CONTEXT_TOKENS=1048576` only for the Claude reviewer subprocess so an undersized compatible upstream rejects the request instead of silently compacting it. Do not downgrade or shrink a Claude review context to make it pass. Fail closed on prompt overflow, compaction, truncation, or insufficient context.
+Each `audit` or `query` execution has one shared budget of at most two submitted reviewer prompts. Initial request, Schema repair, deterministic context shrink, transient retry, and any retry after sending all consume that same budget. Evidence, Policy, authority, and `STALE` failures are not Schema-repaired. No fallback call is allowed.
 
-Invoke Claude once for the full node. Permit exactly one fresh Schema-repair invocation when its response cannot pass the local output Schema. Do not Schema-retry Evidence, Policy, stale fingerprint, context, or other deterministic failures. Do not add outer network retries; Claude Code owns its transport retries.
+Do not pass Claude `--max-budget-usd`. Cost control is the preview, the two-submission cap, and post-call ledger. Persist every successful or failed submitted prompt:
 
-Kimi keeps its existing bounded transport retries and one deterministic context shrink. Explicit quota exhaustion is not transient. Once the selected reviewer exhausts its permitted retry behavior, surface the error without calling the other reviewer.
+- Claude: raw provider token/cache fields, `modelUsage`, durations, and `total_cost_usd`.
+- Kimi: measurable initial estimate, additional ACP reads, duration, and status; unavailable token and USD fields remain `null`.
 
-## Recovery and migration
+Never estimate a missing dollar amount.
 
-A successful review may pass `review-tests`, `rehydrate`, or final `audit` only through the same local Schema, Evidence, AC, authority, and fingerprint gates for both reviewers. Persist reviewer name and model metadata with the review.
+## Outcome semantics
 
-State v1 and v2 migrate to v3 without losing execution evidence, but the selected reviewer is cleared so old routing is not treated as a new manual choice. An active migrated run must use `select-reviewer` before its next review. A migrated suspended run cannot use that active-only command; pass `--reviewer kimi|claude-code` to `resume` once so selection is recorded before rehydration.
+For final audit, locally computed `READY` or `WARNING` may enter `AUDITED` then `COMPLETED`. `BLOCKED` or `CONFLICT` may not. Configuration, authentication, quota, Schema, Evidence, Policy, context, cancellation, and `STALE` failures never advance and have no local bypass.
+
+Query is advisory. Persist its raw result and usage, but do not change milestones, unresolved audit findings, or `semantic_review`.

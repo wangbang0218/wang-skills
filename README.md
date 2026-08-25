@@ -41,11 +41,15 @@ npx skills add wangbang0218/wang-skills \
 
 ### `implement-with-kimi`
 
-让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发。每个模块 run 必须手动选择 Kimi K3 1M 或本机 Claude Code 默认模型作为只读 reviewer；选择后全程沿用，失败时不会自动切换。显式调用该 Skill 并选择 reviewer，即授权其按安全边界读取当前 Git worktree 中的合规文本，无需重复传入代码查看授权。支持纯本地输入校验、Codex 上下文压缩后的恢复、模块状态审计、最终完成门禁，以及可选的项目级 Codex Hook。
+让 Codex 按通过校验的 `prepare-for-kimi` 文档包，或已有的架构、PRD 和模块规范，执行严格的测试先行开发。状态 v4 在本地绑定 AC→测试路径、测试哈希、Red/Green/验证证据、run delta 与工作区指纹；`bootstrap`、测试门禁、`rehydrate`、`resume` 和 Hook 恢复都不会调用 reviewer。
+
+每个模块 run 仍需手动固定选择 Kimi K3 1M 或本机 Claude Code 默认模型，但强制外审只有一次最终 `audit`。到达 `VERIFIED` 后，Skill 先输出 reviewer、初始上下文、权限、重试上限与费用提示；只有用户针对该预览明确授权，才会添加 `--execute-reviewer`。`query` 是同样需要预览授权的可选咨询，不改变 milestone、未解决 findings 或 `semantic_review`。失败时不会自动切换 reviewer。
+
+初始 audit 包上限为 700K；规范、authority/`AGENTS.md`、全部 run delta 和映射测试是 mandatory，超限直接阻塞。700K 只限制初始包，Claude 后续自主仓库读取没有 Skill 施加的硬 token 上限。每次 audit/query 最多提交两个 prompt；不启用 Claude `--max-budget-usd`，而是用调用上限、事前预览和事后 usage ledger 控费。Claude 原样记录 provider usage/`modelUsage`/`total_cost_usd`，Kimi 未提供的 token 或美元字段保持 `null`。
 
 运行该 Skill 的 Node 命令统一通过 `volta run node`，使用前需安装并配置 Volta 和 Node.js 18+。
 
-Claude reviewer 会优先使用 Volta 管理的 Claude Code；需要指定其他绝对路径时设置 `CLAUDE_BIN`，Node 镜像中的旧 Claude 副本不会被静默使用。
+Claude reviewer 会优先使用 Volta 管理的 Claude Code；需要指定其他绝对路径时设置 `CLAUDE_BIN`，Node 镜像中的旧 Claude 副本不会被静默使用。只有最终 audit 或显式 query 会产生强制 reviewer 费用；所有其他阶段都是本地确定性操作。
 
 该 Skill 只应显式调用。它没有 secret scanner；使用前请确保敏感信息没有进入仓库。ignored 文件、二进制或不支持的文本、托管状态文件、不可读路径及越界 symlink 不会交给 reviewer。
 

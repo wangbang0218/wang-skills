@@ -1,46 +1,47 @@
-# Context selection
-
-## Contents
-
-- Access boundary
-- Budget
-- Priority and selection
-- Completeness
+# Deterministic review context
 
 ## Access boundary
 
-Explicit Skill invocation plus reviewer choice authorizes the selected reviewer to read eligible repository content. This Skill has no secret scanner. The user must keep secrets out of the repository. Never follow a symlink outside the Git worktree.
+Explicit Skill invocation and reviewer choice establish the eligible worktree boundary, but do not authorize a paid call. Reviewer execution requires the separate preview approval described in `SKILL.md`.
 
-The initial pack includes tracked and non-ignored untracked UTF-8 text. Exclude ignored files, NUL/binary data, unsupported encodings, managed `.state.md`, unreadable paths, and external symlinks. The reviewer may perform additional read-only repository searches during review.
+Eligible content is Git-tracked or non-ignored untracked UTF-8 text within the current worktree. Exclude ignored files, NUL/binary content, unsupported encodings, managed `.state.md` files, unreadable paths, and symlinks outside the worktree. This Skill has no secret scanner; keep secrets out of the repository.
 
-## Budget
+## Initial budgets
 
-Reserve the selected reviewer's required 1M window approximately as follows:
+- Final audit: fixed 700,000-token initial pack.
+- Advisory query: mandatory tokens plus 150,000 optional tokens, capped at 700,000.
+- Reviewer capability contract: 1,048,576 context tokens.
 
-| Use | Tokens |
-| --- | ---: |
-| Initial context pack | 700,000 |
-| Additional repository reads | 100,000 |
-| Web research | 50,000 |
-| System, reasoning, Schema, output | about 198,000 |
+Token estimates are conservative byte-based estimates, not provider billing figures. Never silently truncate an individual file.
 
-Estimate conservatively without a tokenizer and record both bytes and estimated tokens.
+The preview must state that 700K is only the initial pack. Kimi may make bounded additional repository reads tracked by the ACP client. Claude may autonomously read/search the worktree after the initial pack, and those follow-up reads have no hard token ceiling imposed by this Skill. Both may use read-only web research.
 
-## Priority and selection
+## Mandatory context
 
-Use this fixed order:
+Always include, or represent as mandatory delta metadata when deleted:
 
-1. Current Goal and module specification
-2. `AGENTS.md`, architecture, and PRD
-3. Current changed code, tests, and diff
-4. Direct public contracts, schemas, and types
-5. Other related implementation and tests
-6. Examples, history, benchmarks, fixtures, and snapshots
+1. module specification;
+2. declared authority documents and every applicable repository `AGENTS.md`;
+3. the complete run delta since the captured baseline;
+4. every mapped test file.
 
-If everything fits, include the full eligible repository. Otherwise send the file catalog, specification, hashes, sizes, tiers, and changed flags to a selector run by the same reviewer selected for the module. The selector manifest reports the fixed total budget separately from the tokens already consumed by mandatory paths and the remaining additional budget. The catalog is metadata-only and does not contain repository file bodies. The selector returns additional candidate paths, keeps `findings` empty, and never infers or cites file contents from metadata. The local gate always includes mandatory paths, then fits the selector candidates by the fixed catalog priority using its own token estimates; an over-selected candidate is recorded as `context_budget`, never promoted to mandatory or silently truncated. Files the selector did not choose are recorded as `selector_not_selected`. Kimi uses low effort for selection; Claude Code uses max effort for every node. Selection uses paths, Git state, names, and lightweight text heuristics; it does not claim complete multi-language AST dependency analysis.
+If mandatory file bodies exceed the mode's budget, return `BLOCKED`. Do not send a partial mandatory set and do not mark the audit complete.
 
-## Completeness
+## Fixed local selection
 
-Never truncate an individual file silently. Record every omitted or excluded path and reason. Mark the pack `FULL` only when no eligible file was omitted for budget. If mandatory tiers alone exceed the budget, return `BLOCKED` instead of sending a misleading partial review.
+There is no model selector. After mandatory paths, rank eligible files locally in this order:
 
-Track additional Kimi ACP reads against the 100K budget. Once exhausted, deny broad reads but allow small explicit line ranges. Claude Code receives the same initial pack and read-only worktree boundary. Hash before and after every reviewer node; any repository change makes the result `STALE`.
+1. paths explicitly referenced by the specification;
+2. same-directory or same-basename files;
+3. contracts, schemas, types, interfaces, and APIs;
+4. other related tests/specs;
+5. other implementation;
+6. examples, fixtures, snapshots, benchmarks, and history.
+
+Sort equal-tier files by repository-relative path and add whole files until the budget is full. Record each omitted path, SHA-256, token estimate, and `context_budget` reason. Mark completeness `FULL` only when no eligible file was budget-omitted. This is path/name/text-tier selection, not AST dependency analysis.
+
+## Fingerprints
+
+The run baseline snapshots the starting HEAD, dirty paths, status, and content hashes. Pre-existing unchanged dirt is excluded from the run delta; later changes, additions, deletions, and commits are included. The audit context manifest binds selected and omitted paths to SHA-256 values.
+
+Immediately before and after a reviewer call, hash the complete eligible worktree. Any concurrent change makes the result `STALE`, even if the changed file was omitted from the initial pack.

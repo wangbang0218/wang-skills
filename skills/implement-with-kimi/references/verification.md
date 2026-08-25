@@ -1,64 +1,52 @@
 # Verification
 
-## Contents
+## Local deterministic suite
 
-- Local deterministic checks
-- Fake ACP integration
-- Real reviewer checks
-- Limits
-
-## Local deterministic checks
-
-Run:
+Run from the repository root:
 
 ```bash
 volta run node --test skills/implement-with-kimi/scripts/tests/*.test.mjs
 ```
 
-Cover state transitions and v1/v2 migration, explicit reviewer selection and no-fallback routing, Claude isolation arguments and Volta-versus-Node-image binary resolution, managed/user-note isolation, selector metadata-only prompting and empty findings, evidence hashes and excerpts, symlink escape, context budget selection, model capability checks, JSON capsule limits, Hook merge/removal, Hook lifecycle output, and CLI evidence recording.
+The suite must use fake Kimi/Claude processes and cover:
 
-Check every script:
+- every local stage makes zero reviewer calls;
+- Red, pure-refactor baseline Green, AC/path mappings, all-path Green, and test-hash invalidation;
+- v1, v2, and v3 migration to v4 plus `attach-test-map`;
+- deterministic context order, mandatory overflow, preview, and explicit execution boundary;
+- query side-effect isolation;
+- shared two-submission cap, Schema repair, context behavior, and no fallback;
+- success/failure usage ledger for both reviewers;
+- audit completion, blocking, superseded findings, and concurrent `STALE`;
+- legacy raw-result `inspect`;
+- Hook merge/removal and local recovery reminders;
+- evidence hashes/excerpts, symlink boundary, capsule limits, and model capability checks.
+
+No test may invoke a real paid reviewer.
+
+## Syntax and Skill validation
+
+Check every modified `.mjs` file:
 
 ```bash
-volta run node --check skills/implement-with-kimi/scripts/kimi_context.mjs
+volta run node --check <modified-file.mjs>
 ```
 
-Also check every `.mjs` file under `scripts/lib/` and `assets/codex-hook/`.
-
-## Fake ACP integration
-
-Use the bundled deterministic fake server to test:
-
-- protocol version negotiation;
-- `session/new` and config selection;
-- streaming `agent_message_chunk` assembly;
-- read/write/permission reverse RPC;
-- idle timeout reset;
-- policy violations and cancellation;
-- schema repair and retry budgets.
-
-## Real reviewer checks
-
-Real tests consume reviewer quota and require explicit user authorization.
-
-When authorized, run Kimi at three levels:
-
-1. Small real ACP smoke using a synthetic Git repository and a tiny valid specification.
-2. Near-budget K3 1M synthetic repository containing known needles, conflicting requirements, correction cases, and selector pressure.
-3. Small audit/query that requires a real first-party web lookup and returns external-source metadata.
-
-Never use a proprietary repository for the near-budget test. Verify the actual model alias, context size, effort, ACP protocol, tool denials, Schema, evidence, snapshot stability, and capsule size.
-
-With separate authorization, run a small Claude Code reviewer smoke using a synthetic repository and the user's configured default model. Verify direct routing without Kimi, safe mode, read-only tools, max effort, Schema, fingerprint, failure behavior, and that no session is persisted. Do not run a near-1M paid probe merely to prove the user's context declaration.
-
-## Repository checks
-
-Before handoff run:
+Then run:
 
 ```bash
+uv run --no-project --with pyyaml \
+  /Users/bang/.codex/skills/.system/skill-creator/scripts/quick_validate.py \
+  skills/implement-with-kimi
+
 npx skills add . --list
-python3 <skill-creator>/scripts/quick_validate.py skills/implement-with-kimi
 git diff --check
 ```
 
-CLI discovery and static checks do not prove real model behavior. Report separately which real reviewer layers ran, their model/token cost implications, and any layer skipped or blocked.
+Report exact commands, exit codes, and the meaningful pass/fail summary.
+
+## Optional real reviewer smoke
+
+Real reviewer checks consume quota and require a separate preview plus explicit user authorization. Use only a synthetic repository and never a proprietary near-1M payload by default.
+
+When separately authorized, one small audit/query smoke may verify actual model routing, context capability, read-only tools, Schema, evidence, usage reporting, fingerprint stability, and no session persistence. Do not treat CLI discovery, fake tests, or configuration output as proof of real provider behavior. Report real and skipped layers separately.

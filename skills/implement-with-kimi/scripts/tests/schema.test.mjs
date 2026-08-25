@@ -49,7 +49,7 @@ test("Kimi envelope status is computed rather than trusted", () => {
   assert.equal(result.status, "BLOCKED");
 });
 
-test("selector findings are rejected before unverified evidence can be accepted", () => {
+test("retained legacy selector findings are rejected before unverified evidence can be accepted", () => {
   const input = envelope([{
     id: "SEL-001",
     severity: "INFO",
@@ -158,7 +158,7 @@ test("nested collection item types fail closed", () => {
   assert.throws(() => validateKimiEnvelope(objectOmissions), /omissions.*array of strings/);
 });
 
-test("selector requires non-empty selected paths during envelope validation", () => {
+test("retained legacy selector results require non-empty selected paths", () => {
   const input = envelope([]);
   input.mode = "selector";
   assert.throws(() => validateKimiEnvelope(input), /selected_paths.*non-empty strings/);
@@ -168,6 +168,17 @@ test("selector requires non-empty selected paths during envelope validation", ()
 
   input.selected_paths = [""];
   assert.throws(() => validateKimiEnvelope(input), /selected_paths.*non-empty strings/);
+});
+
+test("current audit and query results reject the removed selector field", () => {
+  const audit = envelope([]);
+  audit.selected_paths = ["src/example.dart"];
+  assert.throws(() => validateKimiEnvelope(audit), /retained legacy selector/);
+
+  const query = envelope([]);
+  query.mode = "query";
+  query.selected_paths = [];
+  assert.throws(() => validateKimiEnvelope(query), /retained legacy selector/);
 });
 
 test("context extensions remain compatible with Kimi and local validation", () => {

@@ -1,11 +1,12 @@
 const SEVERITY_VALUES = ["CONFLICT", "BLOCKED", "WARNING", "INFO"];
-const MODE_VALUES = ["selector", "bootstrap", "review-tests", "rehydrate", "audit", "query"];
+const MODE_VALUES = ["audit", "query"];
+const LEGACY_MODE_VALUES = ["selector", "bootstrap", "review-tests", "rehydrate"];
 const AC_STATUS_VALUES = ["COVERED", "PARTIAL", "MISSING", "EXCEPTION"];
 const RESEARCH_STATUS_VALUES = ["NOT_REQUESTED", "READY", "WARNING", "BLOCKED"];
 const CONTEXT_COMPLETENESS_VALUES = ["FULL", "PARTIAL"];
 
 const SEVERITIES = new Set(SEVERITY_VALUES);
-const MODES = new Set(MODE_VALUES);
+const MODES = new Set([...MODE_VALUES, ...LEGACY_MODE_VALUES]);
 const STATUS_ORDER = ["CONFLICT", "BLOCKED", "WARNING"];
 const AC_STATUSES = new Set(AC_STATUS_VALUES);
 const RESEARCH_STATUSES = new Set(RESEARCH_STATUS_VALUES);
@@ -65,7 +66,6 @@ export const REVIEWER_OUTPUT_SCHEMA = {
         compacted: { type: "boolean" },
       },
     },
-    selected_paths: { type: "array", items: NON_EMPTY_STRING_SCHEMA },
   },
 };
 
@@ -88,11 +88,13 @@ export function validateReviewerEnvelope(input, { mode, runId, acIds } = {}) {
   if (input.mode === "selector" && input.findings.length !== 0) {
     throw new Error("Selector output findings must be empty because the selector catalog is metadata-only.");
   }
-  if (input.selected_paths !== undefined || input.mode === "selector") {
+  if (input.mode === "selector") {
     if (!Array.isArray(input.selected_paths)
       || input.selected_paths.some((item) => typeof item !== "string" || !item)) {
       throw new Error("Reviewer output selected_paths must be an array of non-empty strings in selector mode.");
     }
+  } else if (input.selected_paths !== undefined) {
+    throw new Error("Reviewer output selected_paths is supported only for retained legacy selector results.");
   }
 
   const findings = input.findings.map((finding, index) => validateFinding(finding, index));
