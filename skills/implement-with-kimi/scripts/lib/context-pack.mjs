@@ -12,7 +12,13 @@ export function selectContextFiles(catalog, {
   const byPath = new Map(catalog.map((item) => [item.path, item]));
   const missing = [...required].filter((item) => !byPath.has(item));
   if (missing.length > 0) {
-    return { status: "BLOCKED", reason: `Missing mandatory context: ${missing.join(", ")}`, selected: [], omitted: [] };
+    return {
+      status: "BLOCKED",
+      blocker: "missing_mandatory",
+      reason: `Missing mandatory context: ${missing.join(", ")}`,
+      selected: [],
+      omitted: [],
+    };
   }
 
   const mandatory = [...required].map((item) => byPath.get(item)).sort(compareCatalog);
@@ -20,9 +26,12 @@ export function selectContextFiles(catalog, {
   if (mandatoryTokens > budgetTokens) {
     return {
       status: "BLOCKED",
+      blocker: "mandatory_overflow",
       reason: `The mandatory context requires ${mandatoryTokens} tokens, exceeding the ${budgetTokens} token budget.`,
       selected: [],
       omitted: [],
+      mandatory_tokens: mandatoryTokens,
+      budget_tokens: budgetTokens,
     };
   }
 

@@ -18,6 +18,7 @@ export class AcpClient {
     startupIdleMs = 30_000,
     promptIdleMs = 15 * 60_000,
     readBudgetTokens = 100_000,
+    allowSmallRangeOverBudget = true,
     onProgress = () => {},
     onPolicyViolation = () => {},
   }) {
@@ -29,6 +30,7 @@ export class AcpClient {
     this.startupIdleMs = startupIdleMs;
     this.promptIdleMs = promptIdleMs;
     this.readBudgetTokens = readBudgetTokens;
+    this.allowSmallRangeOverBudget = allowSmallRangeOverBudget;
     this.readTokens = 0;
     this.onProgress = onProgress;
     this.onPolicyViolation = onPolicyViolation;
@@ -353,7 +355,8 @@ export class AcpClient {
     }
     const tokens = estimateTokens(content);
     const smallExplicitRange = Number.isInteger(params.line) && Number.isInteger(params.limit) && tokens <= 4_000;
-    if (this.readTokens + tokens > this.readBudgetTokens && !smallExplicitRange) {
+    if (this.readTokens + tokens > this.readBudgetTokens &&
+        !(this.allowSmallRangeOverBudget && smallExplicitRange)) {
       throw new Error("Kimi direct-read budget is exhausted; request a small explicit line range.");
     }
     this.readTokens += tokens;

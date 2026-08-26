@@ -24,7 +24,7 @@ NOT_STARTED
   -> COMPLETED
 ```
 
-`BLOCKED` is an interrupting state, not a successful milestone. Bootstrap through verification is local and deterministic. Only final `audit --execute-reviewer` may enter `AUDITED` and `COMPLETED`.
+`BLOCKED` is an interrupting state, not a successful milestone. Bootstrap through verification is local and deterministic. Only final `audit` may enter `AUDITED` and `COMPLETED`.
 
 ## Map and validate tests
 
@@ -107,11 +107,11 @@ All mapped test paths require current exit-zero Green evidence for the same run 
 
 ## Preview and final audit
 
-At `VERIFIED`, `review-preview --mode audit` and unconfirmed `audit` both return `REVIEW_READY`, exit successfully, and leave state unchanged. Codex must show the preview and obtain explicit approval before adding `--execute-reviewer`.
+At `VERIFIED`, `audit` executes the fixed reviewer immediately. Explicit Skill invocation already covers eligible repository reads and paid reviewer use, so there is no second preview or execution approval. `review-preview --mode audit` remains an optional informational command that returns `REVIEW_READY` and leaves state unchanged.
 
 The audit receives only the current evidence projection and compact log excerpts, while the full append-only history remains in state. `READY` and `WARNING` may complete. `BLOCKED` and `CONFLICT` remain active blockers. Reviewer execution errors never become local warnings and never advance state.
 
-`query` follows the same preview/authorization contract but is advisory. Its findings do not replace audit findings or change the run state.
+`query` also executes immediately and is advisory. Its optional preview is state-unchanged; its findings do not replace audit findings or change the run state.
 
 ## Recovery and invalidation
 

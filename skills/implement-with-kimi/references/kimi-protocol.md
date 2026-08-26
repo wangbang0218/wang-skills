@@ -2,7 +2,7 @@
 
 ## Preflight
 
-Preflight Kimi only after an explicitly authorized `--execute-reviewer`. Resolve absolute `KIMI_BIN` or search PATH, then run version, configuration doctor, and provider listing. Never install, upgrade, log in, or modify configuration.
+Preflight Kimi only when `audit` or `query` begins. Resolve absolute `KIMI_BIN` or search PATH, then run version, configuration doctor, and provider listing. Never install, upgrade, log in, or modify configuration.
 
 Require underlying model id `k3`, `maxContextSize >= 1048576`, and effort capabilities including `low`, `high`, and `max`. Do not fall back to K3-256k or another model.
 
@@ -39,9 +39,9 @@ External evidence requires HTTP(S) URL, title, access time, and claim. Project a
 
 ## Shared two-submission cap
 
-At most two reviewer prompts may be submitted for one authorized audit/query command. Initial submission, Schema repair, context shrink, transient/network retry, and retry after a sent request share this cap. Startup or handshake failure before prompt submission does not consume it.
+At most two reviewer prompts may be submitted for one audit/query command. Initial submission, Schema repair, context shrink, transient/network retry, and retry after a sent request share this cap. Startup or handshake failure before prompt submission does not consume it.
 
-An oversized/compacted context may trigger one deterministic smaller initial pack only when the shared budget remains; mandatory context still cannot be truncated. Invalid JSON/Schema may receive one repair prompt. Do not retry Evidence, Policy, authority, conflict, blocker, cancellation, or `STALE`. Explicit billing/monthly/rolling quota exhaustion is not transient.
+An oversized/compacted ordinary context may trigger one deterministic smaller initial pack only when the shared budget remains; mandatory context still cannot be truncated. A large-run pack contains only mandatory full text plus the complete tracked delta representation, so context oversize/compaction fails closed without a smaller-pack retry. Invalid JSON/Schema may receive one repair prompt. Do not retry Evidence, Policy, authority, conflict, blocker, cancellation, or `STALE`. Explicit billing/monthly/rolling quota exhaustion is not transient.
 
 On SIGINT/SIGTERM, send cancellation, allow a short shutdown grace period, and reject partial output. Never call Claude as fallback.
 

@@ -13,7 +13,7 @@ The suite must use fake Kimi/Claude processes and cover:
 - every local stage makes zero reviewer calls;
 - Red, pure-refactor baseline Green, AC/path mappings, all-path Green, and test-hash invalidation;
 - v1, v2, and v3 migration to v4 plus `attach-test-map`;
-- deterministic context order, mandatory overflow, preview, and explicit execution boundary;
+- deterministic context order, ordinary mandatory overflow, Kimi-only large-run fallback, complete tracked deletion diff, full untracked/mapped-test bodies, 1M overflow, optional preview, and direct execution;
 - query side-effect isolation;
 - shared two-submission cap, Schema repair, context behavior, and no fallback;
 - success/failure usage ledger for both reviewers;
@@ -47,6 +47,6 @@ Report exact commands, exit codes, and the meaningful pass/fail summary.
 
 ## Optional real reviewer smoke
 
-Real reviewer checks consume quota and require a separate preview plus explicit user authorization. Use only a synthetic repository and never a proprietary near-1M payload by default.
+Real reviewer checks consume quota. Run one only when provider smoke is part of the validation task; invoking the smoke is sufficient and does not require a separate preview approval. Use only a synthetic repository and never a proprietary near-1M payload by default.
 
-When separately authorized, one small audit/query smoke may verify actual model routing, context capability, read-only tools, Schema, evidence, usage reporting, fingerprint stability, and no session persistence. Do not treat CLI discovery, fake tests, or configuration output as proof of real provider behavior. Report real and skipped layers separately.
+One small audit/query smoke may verify actual model routing, context capability, read-only tools, Schema, evidence, usage reporting, fingerprint stability, and no session persistence. Do not treat CLI discovery, fake tests, or configuration output as proof of real provider behavior. Report real and skipped layers separately.

@@ -88,13 +88,22 @@ test("version 3 post-test state preserves its milestone with explicit legacy pro
   assert.equal(parsed.state.migration_requirements.test_maps, "OPTIONAL_LEGACY");
 });
 
-test("reviewer selection is fixed for one run and authorizes 1M read-only review", () => {
+test("reviewer selection is fixed for one run with a 1M read-only contract", () => {
   let state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "selection" });
   state = selectReviewer(state, "claude-code", { now: "2026-08-07T00:00:00.000Z" });
   assert.equal(state.reviewer_policy.selected, "claude-code");
+  assert.equal("repository_access_authorized" in state.reviewer_policy, false);
   assert.equal(state.reviewer_policy.required_context_tokens, 1_048_576);
   assert.deepEqual(selectReviewer(state, "claude-code"), state);
   assert.throws(() => selectReviewer(state, "kimi"), /fixed for the run/);
+});
+
+test("current state ignores and removes the retired repository authorization field", () => {
+  const state = createInitialState({ specPath: "spec.md", specSha256: sha, runId: "retired-authorization" });
+  state.reviewer_policy.repository_access_authorized = false;
+  const parsed = parseStateDocument(renderStateDocument(state, ""));
+  assert.equal("repository_access_authorized" in parsed.state.reviewer_policy, false);
+  assert.equal(selectReviewer(state, "kimi").reviewer_policy.repository_access_authorized, undefined);
 });
 
 test("state events enforce local test validation before implementation", () => {

@@ -30,7 +30,7 @@ volta run node <skill-directory>/scripts/kimi_context.mjs validate-package \
 
 This is read-only and local. It does not inspect reviewer configuration, call a model, create state, or consume reviewer quota. Continue only on exact `READY`. Emitted bootstrap commands include an explicit reviewer placeholder/choice and exact authority paths; bootstrap itself is also local-only.
 
-The first possible reviewer call is the separately previewed and authorized final audit or advisory query.
+The first possible reviewer call is the final audit or advisory query. Explicit Skill invocation covers that read-only paid execution; `review-preview` is optional and informational.
 
 ## Legacy inputs
 

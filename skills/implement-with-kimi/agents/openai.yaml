@@ -1,6 +1,6 @@
 interface:
   display_name: "Implement with Kimi"
   short_description: "Run local TDD gates with one final read-only audit"
-  default_prompt: "Use $implement-with-kimi to implement this module through local TDD gates, preview the final Kimi or Claude Code audit, and ask for my explicit approval before executing that reviewer."
+  default_prompt: "Use $implement-with-kimi to implement this module through local TDD gates and execute the final read-only Kimi or Claude Code audit without asking for another approval."
 policy:
   allow_implicit_invocation: false

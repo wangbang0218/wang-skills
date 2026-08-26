@@ -1,4 +1,4 @@
-# Reviewer selection and authorization
+# Reviewer selection and execution
 
 ## Fixed per-run choice
 
@@ -18,18 +18,17 @@ Never infer a default. Choosing a reviewer records the intended read-only review
 
 The choice is immutable for the run. `select-reviewer` may populate a missing migrated selection or idempotently confirm the current reviewer; it cannot change Kimi to Claude or vice versa. Start a new run to make a different choice. Never automatically fall back after any failure.
 
-## Preview authorization
+## Invocation-based execution
 
-Before `audit` or `query` execution:
+Explicit Skill invocation covers the fixed reviewer's eligible repository reads and paid `audit` or `query` calls. Do not stop for an additional confirmation. At review time:
 
-1. Run `review-preview --mode audit|query`, or run the mode without `--execute-reviewer`.
-2. Show the complete `REVIEW_READY` preview to the user.
-3. Obtain explicit authorization for that concrete reviewer, mode, initial context estimate, access boundary, retry cap, and cost disclosure.
-4. Only then add `--execute-reviewer`.
+1. Run `audit` or `query` directly; either command executes the fixed reviewer.
+2. Use `review-preview --mode audit|query` only for an informational, state-unchanged disclosure when the user asks for one.
+3. Preserve the same concrete reviewer, mode, initial context estimate, access boundary, two-submission cap, and cost ledger whether or not a preview was requested.
 
-An earlier Skill invocation, reviewer choice, repository-read authorization, or previous audit approval is not sufficient. Every new audit/query execution requires its own preview approval.
+Preflight only the selected reviewer when `audit` or `query` starts. Never probe the other reviewer. A preflight failure occurs before prompt submission and consumes no invocation attempt.
 
-Preflight only the selected reviewer after `--execute-reviewer` is present. Never probe the other reviewer. A preflight failure occurs before prompt submission and consumes no invocation attempt.
+If a Kimi final audit needs the large-run representation, its optional preview additionally discloses the ordinary 700K overflow, `large_run_unified_diff`, 1,000,000-token ceiling, exact rendered estimate and context-pack SHA-256, full-file paths, tracked diff paths/SHA/bytes, dynamic additional-read cap, and the no-truncation guarantee. This representation is not an automatic reviewer switch.
 
 ## Claude Code isolation
 

@@ -120,6 +120,7 @@ export function parseStateDocument(document) {
     throw new Error("State file uses a newer schema; upgrade implement-with-kimi before continuing.");
   }
   if (state.state_schema_version < STATE_SCHEMA_VERSION) state = migrateState(state);
+  if (state.reviewer_policy) delete state.reviewer_policy.repository_access_authorized;
   if (state.tool !== "implement-with-kimi") throw new Error("State managed block belongs to a different tool.");
 
   const notesHeading = "\n## User notes\n\n";
@@ -231,18 +232,17 @@ function mapLegacyStatus(status) {
 export function selectReviewer(inputState, reviewer, { now = new Date().toISOString() } = {}) {
   if (!isReviewer(reviewer)) throw new Error("Reviewer must be kimi or claude-code.");
   const state = structuredClone(inputState);
+  if (state.reviewer_policy) delete state.reviewer_policy.repository_access_authorized;
   const previous = state.reviewer_policy?.selected ?? null;
   if (previous && previous !== reviewer) {
     throw new Error(`This run already selected ${previous}; reviewer selection is fixed for the run.`);
   }
   if (
     previous === reviewer &&
-    state.reviewer_policy?.repository_access_authorized === true &&
     state.reviewer_policy?.required_context_tokens === REQUIRED_CONTEXT_TOKENS
   ) return state;
   state.reviewer_policy = {
     selected: reviewer,
-    repository_access_authorized: true,
     required_context_tokens: REQUIRED_CONTEXT_TOKENS,
     selected_at: now,
   };
@@ -254,7 +254,6 @@ export function selectReviewer(inputState, reviewer, { now = new Date().toISOStr
     details: {
       previous,
       selected: reviewer,
-      repository_access_authorized: true,
       required_context_tokens: REQUIRED_CONTEXT_TOKENS,
     },
   });
@@ -264,7 +263,6 @@ export function selectReviewer(inputState, reviewer, { now = new Date().toISOStr
 function defaultReviewerPolicy() {
   return {
     selected: null,
-    repository_access_authorized: false,
     required_context_tokens: null,
     selected_at: null,
   };

@@ -81,6 +81,7 @@ test("mandatory specification, authority, delta, and mapped tests block instead 
   }, { budgetTokens: 999 });
 
   assert.equal(selection.status, "BLOCKED");
+  assert.equal(selection.blocker, "mandatory_overflow");
   assert.match(selection.reason, /mandatory context requires 1000 tokens/i);
 });
 

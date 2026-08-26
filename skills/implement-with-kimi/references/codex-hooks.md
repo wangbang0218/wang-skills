@@ -6,7 +6,7 @@ The optional project Hook is only a lifecycle reminder. It observes Codex `Sessi
 
 ## Installation
 
-Only after explicit user approval:
+When Hook setup is part of the requested task:
 
 ```bash
 volta run node <skill-directory>/scripts/kimi_context.mjs setup-hook

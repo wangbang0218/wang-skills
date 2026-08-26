@@ -158,4 +158,4 @@ For `approved`, require at least one declared asset whose matching `_d_meta.json
 
 Keep modules narrow enough for one `implement-with-kimi` run and one active writer. Prefer vertical behavior slices with observable acceptance criteria over layer-only tasks. Declare dependencies between `MOD-###` entries and recommend a first module whose dependencies are already satisfied.
 
-The validator returns structured authority paths plus separate Kimi and Claude Code bootstrap commands per module. Do not execute a command automatically or choose a reviewer during preparation; the user must explicitly invoke `$implement-with-kimi` and choose a reviewer because that choice authorizes eligible repository content to be read and may consume quota.
+The validator returns structured authority paths plus separate Kimi and Claude Code bootstrap commands per module. Do not execute a command automatically or choose a reviewer during preparation. The user must explicitly invoke `$implement-with-kimi`; that invocation covers the selected reviewer's eligible repository reads and paid audit/query calls without another approval.

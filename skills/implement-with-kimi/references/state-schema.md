@@ -73,6 +73,7 @@ Migration is in-place and preserves run id, activity, User notes, evidence, old 
 - Later and completed states keep their milestone and receive `test_validation.source=legacy-reviewer`; do not fabricate missing path hashes retrospectively.
 - Active migrated runs without mappings use `attach-test-map --test-map AC-NNN=path` without changing `run_id`. For later legacy states the map is optional compatibility metadata.
 - Old routing metadata remains in history, but a missing current reviewer selection must be filled explicitly before audit.
+- Legacy repository-consent/access-authorization fields are historical only. Current runs neither create nor require them; explicit Skill invocation covers eligible read-only reviewer access and paid audit/query execution.
 - Current output Schema supports only `audit` and `query`; legacy modes remain readable solely for retained raw-result `inspect`.
 
 Reject a newer unknown schema and never reconstruct malformed state automatically.

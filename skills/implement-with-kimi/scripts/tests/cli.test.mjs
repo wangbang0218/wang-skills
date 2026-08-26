@@ -37,7 +37,7 @@ test("bootstrap is local-only, fixes the reviewer, and performs no preflight", a
 
     const loaded = await state(root);
     assert.equal(loaded.reviewer_policy.selected, reviewer);
-    assert.equal(loaded.reviewer_policy.repository_access_authorized, true);
+    assert.equal("repository_access_authorized" in loaded.reviewer_policy, false);
     assert.equal(loaded.reviewer_policy.required_context_tokens, 1_048_576);
     assert.equal(loaded.status, "BOOTSTRAP_READY");
   }
@@ -158,7 +158,7 @@ test("rehydrate, suspend, and resume are local-only and only report the next ste
   await assertMissing(harness.claudeMarker);
 });
 
-test("review-preview and unconfirmed audit return the same REVIEW_READY preview without changing state", async () => {
+test("review-preview is informational and requires no separate approval", async () => {
   const root = await repository();
   await reachVerified(root, "claude-code");
   const harness = await reviewerHarness();
@@ -167,13 +167,14 @@ test("review-preview and unconfirmed audit return the same REVIEW_READY preview 
   const preview = run(root, [
     "review-preview", "--mode", "audit", "--spec", "spec.md", "--authority", "architecture.md",
   ], env);
-  const unconfirmed = run(root, ["audit", "--spec", "spec.md", "--authority", "architecture.md"], env);
   assertOk(preview);
-  assertOk(unconfirmed);
-  assert.deepEqual(json(unconfirmed), json(preview));
   assert.equal(json(preview).status, "REVIEW_READY");
-  assert.equal(json(preview).requires_explicit_user_authorization, true);
+  assert.equal(json(preview).separate_approval_required, false);
+  assert.equal(json(preview).next_command, "audit");
+  assert.equal(json(preview).initial_context.representation, "full_files");
+  assert.equal(json(preview).initial_context.budget_tokens, 700_000);
   assert.equal(json(preview).reviewer_access.effort, "max");
+  assert.equal(json(preview).reviewer_access.additional_repo_read_hard_limited, false);
   assert.equal(json(preview).cost_control.usd_cap, null);
   assert.equal(json(preview).submission_policy.max_prompt_submissions, 2);
   assert.equal(json(preview).submission_policy.preflight_failures_count, false);
@@ -183,7 +184,7 @@ test("review-preview and unconfirmed audit return the same REVIEW_READY preview 
   await assertMissing(harness.claudeMarker);
 });
 
-test("authorized final audit routes to the fixed fake reviewer and completes with a usage ledger", async () => {
+test("final audit directly routes to the fixed fake reviewer and completes with a usage ledger", async () => {
   for (const reviewer of ["kimi", "claude-code"]) {
     const root = await repository();
     await reachVerified(root, reviewer);
@@ -193,7 +194,7 @@ test("authorized final audit routes to the fixed fake reviewer and completes wit
       : [];
     const env = await fakeReviewerEnvironment(harness, { claudeFindings });
     const result = run(root, [
-      "audit", "--spec", "spec.md", "--authority", "architecture.md", "--execute-reviewer",
+      "audit", "--spec", "spec.md", "--authority", "architecture.md",
     ], { ...env, FAKE_REVIEW_RESPONSE: "1" });
     assertOk(result);
     assert.equal(json(result).status, reviewer === "claude-code" ? "WARNING" : "READY");
@@ -219,7 +220,7 @@ test("authorized final audit routes to the fixed fake reviewer and completes wit
   }
 });
 
-test("authorized query records cost but cannot change milestones, findings, or semantic review", async () => {
+test("query directly records cost but cannot change milestones, findings, or semantic review", async () => {
   const root = await repository();
   await reachVerified(root, "claude-code");
   const loaded = await readStateFile(path.join(root, "spec.state.md"));
@@ -239,7 +240,7 @@ test("authorized query records cost but cannot change milestones, findings, or s
   await assertMissing(harness.claudeMarker);
   const result = run(root, [
     "query", "--spec", "spec.md", "--authority", "architecture.md",
-    "--question", "Is the public API compatible?", "--execute-reviewer",
+    "--question", "Is the public API compatible?",
   ], env);
   assertOk(result);
   assert.equal(json(result).advisory, true);
@@ -260,7 +261,7 @@ test("blocking audit stays blocked until the run fingerprint changes, then findi
   const blocking = await localFinding(root, "A-001", "BLOCKED");
   const env = await fakeReviewerEnvironment(harness, { claudeFindings: [blocking] });
   const audited = run(root, [
-    "audit", "--spec", "spec.md", "--authority", "architecture.md", "--execute-reviewer",
+    "audit", "--spec", "spec.md", "--authority", "architecture.md",
   ], env);
   assert.equal(audited.status, 2);
   let loaded = await state(root);
@@ -286,7 +287,7 @@ test("blocking audit stays blocked until the run fingerprint changes, then findi
   const testBlocking = await localFinding(testRoot, "A-TEST", "BLOCKED");
   const testEnv = await fakeReviewerEnvironment(testHarness, { claudeFindings: [testBlocking] });
   const testAudit = run(testRoot, [
-    "audit", "--spec", "spec.md", "--authority", "architecture.md", "--execute-reviewer",
+    "audit", "--spec", "spec.md", "--authority", "architecture.md",
   ], testEnv);
   assert.equal(testAudit.status, 2);
   await writeFile(path.join(testRoot, "test/red.test.mjs"), "changed after blocked audit\n", "utf8");
@@ -303,7 +304,7 @@ test("context shrink and compaction still share the two-submission audit cap", a
   const harness = await reviewerHarness();
   const env = await fakeReviewerEnvironment(harness, { claudeCompacted: true });
   const result = run(root, [
-    "audit", "--spec", "spec.md", "--authority", "architecture.md", "--execute-reviewer",
+    "audit", "--spec", "spec.md", "--authority", "architecture.md",
   ], env);
   assert.equal(result.status, 5);
   assert.match(result.stdout, /CONTEXT_OVERSIZE/);
@@ -316,14 +317,67 @@ test("context shrink and compaction still share the two-submission audit cap", a
   ]);
 });
 
-test("mandatory audit context over 700K blocks before reviewer preflight", async () => {
+test("Kimi mandatory audit context over 700K uses the disclosed lossless large-run pack and completes with one fake call", async () => {
   const root = await repository({ testContent: "x".repeat(1_500_000) });
   await reachVerified(root, "kimi");
+  const harness = await reviewerHarness();
+  const env = await fakeReviewerEnvironment(harness);
+  const before = await readFile(path.join(root, "spec.state.md"), "utf8");
+  const preview = run(root, [
+    "review-preview", "--mode", "audit", "--spec", "spec.md", "--authority", "architecture.md",
+  ], env);
+  assertOk(preview);
+  const disclosed = json(preview);
+  assert.equal(disclosed.status, "REVIEW_READY");
+  assert.equal(disclosed.initial_context.representation, "large_run_unified_diff");
+  assert.equal(disclosed.initial_context.budget_tokens, 1_000_000);
+  assert.ok(disclosed.initial_context.estimated_tokens > 700_000);
+  assert.equal(disclosed.initial_context.mandatory_completeness, "FULL");
+  assert.equal(disclosed.initial_context.no_truncation, true);
+  assert.match(disclosed.initial_context.context_pack_sha256, /^[0-9a-f]{64}$/);
+  assert.ok(disclosed.initial_context.full_file_paths.includes("test/red.test.mjs"));
+  assert.ok(disclosed.reviewer_access.additional_repo_read_limit_tokens > 0);
+  assert.ok(disclosed.reviewer_access.additional_repo_read_limit_tokens <= 100_000);
+  assert.equal(disclosed.reviewer_access.additional_repo_read_hard_limited, true);
+  assert.equal(await readFile(path.join(root, "spec.state.md"), "utf8"), before);
+  await assertMissing(harness.kimiMarker);
+  await assertMissing(harness.claudeMarker);
+
+  const result = run(root, [
+    "audit", "--spec", "spec.md", "--authority", "architecture.md",
+  ], { ...env, FAKE_REVIEW_RESPONSE: "1" });
+  assertOk(result);
+  assert.equal(json(result).module_status, "COMPLETED");
+  const loaded = await state(root);
+  assert.equal(loaded.review_invocations.length, 1);
+  assert.equal(loaded.review_invocations[0].reviewer, "kimi");
+  assert.equal(loaded.review_invocations[0].usage.estimated_initial_tokens,
+    disclosed.initial_context.estimated_tokens);
+  await readFile(harness.kimiMarker, "utf8");
+  await assertMissing(harness.claudeMarker);
+});
+
+test("Claude mandatory audit context over 700K remains blocked before reviewer preflight", async () => {
+  const root = await repository({ testContent: "x".repeat(1_500_000) });
+  await reachVerified(root, "claude-code");
   const harness = await reviewerHarness();
   const env = await fakeReviewerEnvironment(harness);
   const result = run(root, ["audit", "--spec", "spec.md", "--authority", "architecture.md"], env);
   assert.equal(result.status, 2);
   assert.match(result.stdout, /mandatory context requires.*exceeding the 700000 token budget/i);
+  assert.equal((await state(root)).status, "BLOCKED");
+  await assertMissing(harness.kimiMarker);
+  await assertMissing(harness.claudeMarker);
+});
+
+test("Kimi large-run context above one million blocks before reviewer preflight without truncation", async () => {
+  const root = await repository({ testContent: "x".repeat(2_100_000) });
+  await reachVerified(root, "kimi");
+  const harness = await reviewerHarness();
+  const env = await fakeReviewerEnvironment(harness);
+  const result = run(root, ["audit", "--spec", "spec.md", "--authority", "architecture.md"], env);
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /lossless large-run context requires.*exceeding the 1000000 token budget.*no file or diff was truncated/i);
   assert.equal((await state(root)).status, "BLOCKED");
   await assertMissing(harness.kimiMarker);
   await assertMissing(harness.claudeMarker);

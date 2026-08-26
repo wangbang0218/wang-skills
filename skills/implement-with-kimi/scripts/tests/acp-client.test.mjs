@@ -290,6 +290,32 @@ test("ACP client rejects an outside rawInput.path when ACP omits locations", asy
   }
 });
 
+test("ACP client can hard-limit small explicit repository reads for a near-capacity large-run pack", async () => {
+  for (const [allowSmallRangeOverBudget, expectedDenied] of [[true, false], [false, true]]) {
+    const client = new AcpClient({
+      command: process.execPath,
+      args: [fakeAgent],
+      cwd: testDirectory,
+      env: {
+        ...process.env,
+        FAKE_READ_REQUEST: "fixtures/fake-acp.mjs",
+      },
+      readBudgetTokens: 1,
+      allowSmallRangeOverBudget,
+      startupIdleMs: 2_000,
+      promptIdleMs: 2_000,
+    });
+    try {
+      await client.initialize();
+      const session = await client.newSession();
+      const response = await client.prompt(session.sessionId, "read one explicit line");
+      assert.equal(JSON.parse(response.text).read_denied, expectedDenied);
+    } finally {
+      await client.close();
+    }
+  }
+});
+
 test("ACP cancellation has a short grace period instead of waiting for idle timeout", async () => {
   const client = new AcpClient({
     command: process.execPath,

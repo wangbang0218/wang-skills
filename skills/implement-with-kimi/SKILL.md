@@ -1,19 +1,19 @@
 ---
 name: implement-with-kimi
-description: "Implement one documented project module at a time with deterministic test-first state gates and one explicitly authorized read-only final audit by Kimi K3 1M or local Claude Code. Use when a user explicitly asks Codex to implement from a validated prepare-for-kimi package or persisted architecture/PRD/module specification, preserve progress across compaction or resume, bind ACs and execution evidence to current file hashes, or audit completion. Do not invoke implicitly: the final audit can expose eligible worktree text to the selected reviewer and consume paid quota."
+description: "Implement one documented project module at a time with deterministic test-first state gates and one read-only final audit by Kimi K3 1M or local Claude Code. Use only when a user explicitly invokes it to implement from a validated prepare-for-kimi package or persisted architecture/PRD/module specification, preserve progress across compaction or resume, bind ACs and execution evidence to current file hashes, or audit completion. Invocation authorizes the fixed reviewer to inspect eligible worktree text and consume paid quota for audit or query without another approval."
 ---
 
 # Implement with an Audit-only Reviewer
 
-Codex is the only writer and project-command executor. All workflow gates before the final audit are local and deterministic. The selected reviewer is read-only and may run only for an explicitly authorized `audit --execute-reviewer` or advisory `query --execute-reviewer`.
+Codex is the only writer and project-command executor. All workflow gates before the final audit are local and deterministic. The selected reviewer is read-only. Explicit Skill invocation authorizes its eligible worktree reads and paid `audit` or advisory `query`; never stop for a second preview or execution approval.
 
-Resolve bundled paths relative to this `SKILL.md`. Require a Git worktree, Volta, and Node.js 18+. Run bundled Node commands with `volta run node`; never fall back to a system Node. Do not install, upgrade, log in, alter reviewer configuration, commit, or push unless separately requested.
+Resolve bundled paths relative to this `SKILL.md`. Require a Git worktree, Volta, and Node.js 18+. Run bundled Node commands with `volta run node`; never fall back to a system Node. Installation, upgrades, login, reviewer configuration, commit, and push remain outside this Skill's implementation scope unless the task explicitly includes them.
 
 ## Start one module locally
 
 1. Read the repository's applicable `AGENTS.md`, the module specification, and every declared authority document.
 2. If an `implementation-package.json` exists, read [references/input-contract.md](references/input-contract.md) and run local `validate-package`. Continue only on exact `READY`.
-3. Require stable `AC-###` acceptance criteria and one explicit reviewer choice: `kimi` or `claude-code`. Never infer a default.
+3. Require stable `AC-###` acceptance criteria and one fixed reviewer choice: `kimi` or `claude-code`. Never infer a default.
 4. Run local bootstrap:
 
 ```bash
@@ -40,31 +40,23 @@ Read [references/workflow.md](references/workflow.md) before implementation and 
 
 The CLI records commands and evidence; it never executes project tests. Environment, dependency, permission, timeout, and infrastructure failures are not valid Red.
 
-## Preview, ask, then audit
+## Audit without another approval
 
-At `VERIFIED`, run a preview without reviewer execution:
-
-```bash
-volta run node <skill-directory>/scripts/kimi_context.mjs review-preview \
-  --mode audit \
-  --spec docs/tasks/module.md \
-  --authority docs/architecture.md
-```
-
-Running `audit` without `--execute-reviewer` returns the same `REVIEW_READY` preview and leaves state unchanged. Show the user the complete preview, including reviewer, initial token estimate and budget, mandatory paths, run delta, read/web permissions, two-submission cap, lack of a USD cap, and the warning that 700K covers only the initial pack while Claude follow-up repository reads have no hard token ceiling.
-
-Obtain a new, explicit user authorization for that preview. The original Skill invocation or reviewer choice is not execution authorization. Only after approval may Codex run:
+At `VERIFIED`, run the fixed reviewer directly:
 
 ```bash
 volta run node <skill-directory>/scripts/kimi_context.mjs audit \
   --spec docs/tasks/module.md \
-  --authority docs/architecture.md \
-  --execute-reviewer
+  --authority docs/architecture.md
 ```
+
+The command deterministically binds reviewer, context representation, initial token estimate and budget, mandatory paths, run delta, read/web permissions, two-submission cap, and lack of a USD cap before reviewer execution. Explicit Skill use already covers that execution; do not ask the user to authorize the preview or paid call again.
+
+Use `review-preview --mode audit|query` only when the user asks to inspect the same disclosure without calling the reviewer. It returns `REVIEW_READY` and leaves state unchanged, but it is informational rather than an execution gate. Ordinary runs use the 700K whole-file pack. If Kimi audit mandatory bodies exceed 700K, the preview or audit may instead disclose the fail-closed large-run pack: full specification/authorities/`AGENTS.md`/mapped tests/untracked delta plus one complete SHA-bound tracked-delta diff, capped at 1,000,000 estimated tokens with no file or diff truncation. Claude never uses this fallback.
 
 `READY` or `WARNING` completes the run and sets `semantic_review=AUDITED`. `BLOCKED` or `CONFLICT` does not. Configuration, quota, Schema, Evidence, Policy, context, cancellation, or `STALE` failures never advance state and have no local bypass.
 
-Use `query --question ...` only for optional advice. Preview and explicitly authorize it in the same way. A query records its result and usage but cannot alter milestones, unresolved findings, or `semantic_review`.
+Use `query --question ...` only for optional advice; it executes the fixed reviewer without another approval. A query records its result and usage but cannot alter milestones, unresolved findings, or `semantic_review`.
 
 Read [references/context-selection.md](references/context-selection.md), [references/reviewer-selection.md](references/reviewer-selection.md), and [references/kimi-protocol.md](references/kimi-protocol.md) before executing a reviewer.
 
@@ -77,6 +69,6 @@ Read [references/context-selection.md](references/context-selection.md), [refere
 - Start a new run when the specification or authority set/content changes.
 - A mapped test change after `TESTS_VALIDATED` rolls back to the test-evidence stage. Other implementation changes after Green, verification, or audit roll back to `IMPLEMENTING`.
 - Use `suspend --reason ...` before switching modules and local `resume` when returning.
-- Offer `setup-hook` only after explicit approval; read [references/codex-hooks.md](references/codex-hooks.md) first.
+- Run `setup-hook` only when Hook setup is part of the requested task; read [references/codex-hooks.md](references/codex-hooks.md) first.
 
 Read [references/state-schema.md](references/state-schema.md) for v4 lifecycle and migration, and [references/verification.md](references/verification.md) before modifying or validating this Skill.

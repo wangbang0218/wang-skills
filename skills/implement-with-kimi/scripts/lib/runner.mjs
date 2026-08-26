@@ -30,6 +30,8 @@ export async function runKimiNode({
   signal,
   submissionBudget = createSubmissionBudget(),
   estimatedInitialTokens = null,
+  additionalRepoReadLimitTokens = 100_000,
+  additionalRepoReadHardLimited = false,
   onInvocation = async () => {},
   onProgress = () => {},
 }) {
@@ -45,6 +47,8 @@ export async function runKimiNode({
       command: preflight.binary,
       args: ["acp"],
       cwd: repoRoot,
+      readBudgetTokens: additionalRepoReadLimitTokens,
+      allowSmallRangeOverBudget: !additionalRepoReadHardLimited,
       onProgress,
       onPolicyViolation: (violation) => onProgress(
         `POLICY_VIOLATION ${violation.kind} (${violation.method || "unknown"}): ${violation.reason}`,

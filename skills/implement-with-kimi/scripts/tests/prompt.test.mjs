@@ -16,6 +16,9 @@ test("audit prompt declares read-only policy and exact evidence contract", () =>
   assert.match(prompt, /BLOCKED means the current VERIFIED module cannot safely become COMPLETED/);
   assert.match(prompt, /repository-relative/);
   assert.match(prompt, /authoritative SHA-256/);
+  assert.match(prompt, /large_run_unified_diff/);
+  assert.match(prompt, /complete, SHA-bound, zero-context Git diff/);
+  assert.match(prompt, /deleted path is context only and cannot be cited as current local evidence/);
   assert.match(prompt, /byte-for-byte/);
   assert.match(prompt, /recorded execution logs.*metadata/i);
   assert.match(prompt, /schema_version must be 1/);

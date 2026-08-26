@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 import { sha256File } from "./lib/evidence.mjs";
 import { validateImplementationPackage } from "./lib/document-package.mjs";
 import { mergeHookConfig, removeHookConfig } from "./lib/hook-config.mjs";
+import {
+  buildLargeRunContext,
+  LARGE_RUN_RESPONSE_RESERVE,
+} from "./lib/large-run-context.mjs";
 import { assertSupportedNode, assertVoltaNode, preflightKimi } from "./lib/preflight.mjs";
 import { preflightClaude, runClaudeNode } from "./lib/claude-runner.mjs";
 import {
@@ -45,7 +49,7 @@ const skillDirectory = path.dirname(scriptDirectory);
 const SHRUNK_CONTEXT_BUDGET = 520_000;
 const EXIT = { GENERAL: 1, BLOCKED: 2, CONFIG: 3, VALIDATION: 4, TRANSIENT: 5, CANCELLED: 6 };
 const LEGACY_COMMANDS = new Set(["enable-reviewer-fallback", "retry-kimi"]);
-const LEGACY_OPTIONS = ["fallback-reviewer", "reviewer-context", "consent-repository-to-reviewer"];
+const LEGACY_OPTIONS = ["fallback-reviewer", "reviewer-context"];
 const LEGACY_HOOK_SHA256 = new Set([
   "09c60b7b3230d3d858bddcc7b00e42cac0f2a2cc505397f55130d882e541f40f",
   "00af13816e350bf8318c178e7b6ee24c5c910a02bee25b8aaba6a72b2aacf609",
@@ -403,10 +407,8 @@ async function reviewCommand(repoRoot, spec, mode, options) {
     }
     throw error;
   }
-  if (options["execute-reviewer"] !== true) return emit(preparation.preview);
-
   progress(
-    "Authorized reviewer execution: mode=" + mode +
+    "Reviewer execution: mode=" + mode +
     ", reviewer=" + preparation.preview.reviewer +
     ", initial_tokens=" + preparation.preview.initial_context.estimated_tokens +
     "/" + preparation.preview.initial_context.budget_tokens,
@@ -451,8 +453,40 @@ async function prepareReview(repoRoot, spec, state, mode, { question = null } = 
     runDelta,
   });
   const budgetTokens = mode === "query" ? queryContextBudget(catalog) : INITIAL_CONTEXT_BUDGET;
-  const selection = selectRepositoryContext(catalog, { budgetTokens });
+  const ordinarySelection = selectRepositoryContext(catalog, { budgetTokens });
+  let selection = ordinarySelection;
+  let contextPack = null;
+  let representation = "full_files";
+  if (selection.status === "BLOCKED" && selection.blocker === "mandatory_overflow" &&
+      reviewer === "kimi" && mode === "audit") {
+    const agentPaths = catalog.catalog
+      .filter((entry) => /(^|\/)AGENTS\.md$/.test(entry.path))
+      .map((entry) => entry.path);
+    selection = buildLargeRunContext(repoRoot, catalog, {
+      baseline: state.run_baseline,
+      fullPaths: [spec.relative_path, ...spec.authority_paths, ...agentPaths, ...mappedTests],
+      ordinaryBlock: {
+        reason: ordinarySelection.reason,
+        mandatory_tokens: ordinarySelection.mandatory_tokens,
+        budget_tokens: budgetTokens,
+      },
+      metadata: reviewContextMetadata(state, spec, mode, undefined, { includeRunBaseline: true }),
+    });
+    if (selection.status === "READY") {
+      contextPack = selection.context_pack;
+      representation = selection.representation;
+    }
+  }
   if (selection.status === "BLOCKED") throw typedError("BLOCKED", selection.reason);
+  const additionalRepoReadLimitTokens = reviewer === "kimi"
+    ? representation === "large_run_unified_diff"
+      ? Math.min(100_000, Math.max(
+          0,
+          1_048_576 - selection.estimated_tokens - LARGE_RUN_RESPONSE_RESERVE,
+        ))
+      : 100_000
+    : null;
+  const additionalRepoReadHardLimited = representation === "large_run_unified_diff";
   const preview = {
     schema_version: 1,
     status: "REVIEW_READY",
@@ -460,58 +494,88 @@ async function prepareReview(repoRoot, spec, state, mode, { question = null } = 
     ...(mode === "query" ? { question } : {}),
     run_id: state.run_id,
     reviewer,
-    requires_execute_reviewer: true,
-    requires_explicit_user_authorization: true,
+    separate_approval_required: false,
     state_unchanged: true,
     initial_context: {
+      representation,
       budget_tokens: selection.budget_tokens,
       estimated_tokens: selection.estimated_tokens,
       mandatory_tokens: selection.mandatory_tokens,
+      mandatory_completeness: "FULL",
       completeness: selection.omitted.length === 0 ? "FULL" : "PARTIAL",
       selected_count: selection.selected.length,
+      represented_count: selection.represented?.length ?? 0,
       omitted_count: selection.omitted.length,
-      mandatory_paths: catalog.required_paths,
+      mandatory_paths: selection.mandatory_paths ?? catalog.required_paths,
       run_delta: catalog.run_delta,
+      ...(representation === "large_run_unified_diff" ? {
+        no_truncation: true,
+        context_pack_sha256: selection.context_pack_sha256,
+        full_file_paths: selection.full_file_paths,
+        untracked_delta_full_paths: selection.untracked_delta_full_paths,
+        tracked_delta_diff: withoutText(selection.diff),
+        ordinary_full_file_block: {
+          reason: ordinarySelection.reason,
+          budget_tokens: budgetTokens,
+        },
+      } : {}),
     },
     reviewer_access: {
       required_context_tokens: 1_048_576,
       effort: "max",
       repository_read_search: "allowed",
-      additional_repo_read_limit_tokens: reviewer === "kimi" ? 100_000 : null,
+      additional_repo_read_limit_tokens: additionalRepoReadLimitTokens,
+      additional_repo_read_hard_limited: additionalRepoReadHardLimited,
       claude_additional_reads_hard_limited: false,
       web_access: true,
     },
     cost_control: {
       usd_cap: null,
       provider_cost_recorded_after_call: true,
-      note: "700K is the initial pack only; Claude follow-up repository reads have no hard token ceiling.",
+      note: representation === "large_run_unified_diff"
+        ? "Kimi large-run mode uses a complete SHA-bound tracked-delta diff plus full mandatory files, with no file or diff truncation; 1,000,000 tokens is the initial-pack ceiling."
+        : "700K is the initial pack only; Claude follow-up repository reads have no hard token ceiling.",
     },
     submission_policy: {
       max_prompt_submissions: 2,
       shared_by: ["initial", "schema_repair", "context_shrink", "post_send_retry"],
       preflight_failures_count: false,
     },
-    next_command: mode + " --execute-reviewer",
+    next_command: mode,
   };
-  return { catalog, selection, preview };
+  return {
+    catalog,
+    selection,
+    preview,
+    contextPack,
+    representation,
+    additionalRepoReadLimitTokens,
+    additionalRepoReadHardLimited,
+  };
 }
 
 async function executeReview(repoRoot, spec, state, mode, options, preparation, onInvocation) {
   const reviewer = requireSelectedReviewerPolicy(state);
   const preflight = reviewer === "kimi" ? await preflightKimi() : await preflightClaude();
   const submissionBudget = createSubmissionBudget(2);
-  const runSelection = async (selection) => {
+  const runSelection = async (selection, {
+    contextPack = null,
+    additionalRepoReadLimitTokens = preparation.additionalRepoReadLimitTokens,
+    additionalRepoReadHardLimited = preparation.additionalRepoReadHardLimited,
+  } = {}) => {
     const node = {
       repoRoot,
       mode,
       runId: state.run_id,
       specPath: spec.relative_path,
       acIds: spec.ac_ids,
-      contextPack: renderReviewContext(preparation.catalog, selection, state, spec, mode),
+      contextPack: contextPack ?? renderReviewContext(preparation.catalog, selection, state, spec, mode),
       question: options.question,
       signal: controller.signal,
       submissionBudget,
       estimatedInitialTokens: selection.estimated_tokens,
+      additionalRepoReadLimitTokens,
+      additionalRepoReadHardLimited,
       onInvocation,
       onProgress: progress,
     };
@@ -529,10 +593,15 @@ async function executeReview(repoRoot, spec, state, mode, options, preparation, 
   };
 
   try {
-    return await runSelection(preparation.selection);
+    return await runSelection(preparation.selection, {
+      contextPack: preparation.contextPack,
+      additionalRepoReadLimitTokens: preparation.additionalRepoReadLimitTokens,
+      additionalRepoReadHardLimited: preparation.additionalRepoReadHardLimited,
+    });
   } catch (error) {
     if (!["CONTEXT_COMPACTED", "CONTEXT_OVERSIZE"].includes(error.kind) ||
-        submissionBudget.used >= submissionBudget.max) {
+        submissionBudget.used >= submissionBudget.max ||
+        preparation.representation === "large_run_unified_diff") {
       throw error;
     }
     progress("Reviewer context retry after " + error.kind + "; shrinking initial pack to " + SHRUNK_CONTEXT_BUDGET + " tokens");
@@ -545,16 +614,26 @@ async function executeReview(repoRoot, spec, state, mode, options, preparation, 
 function renderReviewContext(catalog, selection, state, spec, mode) {
   return renderContextPack(
     { ...selection, excluded: catalog.excluded },
-    {
-      run_id: state.run_id,
-      mode,
-      spec_path: spec.relative_path,
-      authority_paths: spec.authority_paths,
-      git_baseline: state.git_baseline,
-      run_delta: catalog.run_delta,
-      state_summary: buildReviewStateSummary(state),
-    },
+    reviewContextMetadata(state, spec, mode, catalog.run_delta),
   );
+}
+
+function reviewContextMetadata(state, spec, mode, runDelta = undefined, { includeRunBaseline = false } = {}) {
+  return {
+    run_id: state.run_id,
+    mode,
+    spec_path: spec.relative_path,
+    authority_paths: spec.authority_paths,
+    git_baseline: state.git_baseline,
+    ...(includeRunBaseline ? { run_baseline: state.run_baseline } : {}),
+    ...(runDelta ? { run_delta: runDelta } : {}),
+    state_summary: buildReviewStateSummary(state),
+  };
+}
+
+function withoutText(diff) {
+  const { text: _text, ...metadata } = diff;
+  return metadata;
 }
 
 function applyAuditToState(inputState, result, repoRoot) {
@@ -1072,7 +1151,7 @@ function nextActionForStatus(status) {
     TESTS_VALIDATED: "record implementation-started",
     IMPLEMENTING: "record complete Green evidence",
     GREEN_CONFIRMED: "record verification-observed",
-    VERIFIED: "run audit for REVIEW_READY, obtain approval, then add --execute-reviewer",
+    VERIFIED: "run audit with the fixed reviewer",
     BLOCKED: "resolve the recorded blocker, then run rehydrate",
   };
   return actions[status] || "inspect the state and specification";
@@ -1198,8 +1277,8 @@ function usage() {
     "  kimi_context.mjs attach-test-map --spec <file> --test-map AC-001=path [...]",
     "  kimi_context.mjs rehydrate|suspend|resume --spec <file> [...]",
     "  kimi_context.mjs review-preview --mode audit|query --spec <file> [--question <text>]",
-    "  kimi_context.mjs audit --spec <file> [--execute-reviewer]",
-    "  kimi_context.mjs query --spec <file> --question <text> [--execute-reviewer]",
+    "  kimi_context.mjs audit --spec <file>",
+    "  kimi_context.mjs query --spec <file> --question <text>",
     "  kimi_context.mjs inspect --spec <file> --finding <id>",
     "  kimi_context.mjs setup-hook|remove-hook",
   ].join("\n");

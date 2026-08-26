@@ -15,11 +15,10 @@ test("reviewer selection accepts only Kimi and Claude Code", () => {
   assert.equal(isReviewer("auto"), false);
 });
 
-test("a complete reviewer policy authorizes one selected reviewer", () => {
+test("a complete reviewer policy fixes one selected reviewer", () => {
   const state = {
     reviewer_policy: {
       selected: "claude-code",
-      repository_access_authorized: true,
       required_context_tokens: REQUIRED_CONTEXT_TOKENS,
     },
   };
@@ -27,19 +26,17 @@ test("a complete reviewer policy authorizes one selected reviewer", () => {
   assert.equal(requireSelectedReviewerPolicy(state), "claude-code");
 });
 
-test("reviewer policy fails closed when selection, access authorization, or 1M context is missing", () => {
+test("reviewer policy fails closed when selection or 1M context is missing", () => {
   const valid = {
     reviewer_policy: {
       selected: "kimi",
-      repository_access_authorized: true,
       required_context_tokens: REQUIRED_CONTEXT_TOKENS,
     },
   };
   assert.throws(() => requireSelectedReviewerPolicy({ reviewer_policy: { ...valid.reviewer_policy, selected: null } }), /select-reviewer/);
-  assert.throws(
-    () => requireSelectedReviewerPolicy({ reviewer_policy: { ...valid.reviewer_policy, repository_access_authorized: false } }),
-    /not authorized/,
-  );
+  assert.equal(requireSelectedReviewerPolicy({
+    reviewer_policy: { ...valid.reviewer_policy, repository_access_authorized: false },
+  }), "kimi");
   assert.throws(
     () => requireSelectedReviewerPolicy({ reviewer_policy: { ...valid.reviewer_policy, required_context_tokens: 262_144 } }),
     /1,048,576/,

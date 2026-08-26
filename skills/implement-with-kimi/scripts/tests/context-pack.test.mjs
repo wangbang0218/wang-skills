@@ -19,6 +19,7 @@ test("mandatory context is never silently truncated", () => {
     requiredPaths: ["spec.md", "AGENTS.md"],
   });
   assert.equal(result.status, "BLOCKED");
+  assert.equal(result.blocker, "mandatory_overflow");
   assert.match(result.reason, /mandatory/i);
   assert.deepEqual(result.selected, []);
 });
@@ -51,5 +52,6 @@ test("a missing mandatory path blocks before optional selection", () => {
     requiredPaths: ["test/mapped.test.mjs"],
   });
   assert.equal(result.status, "BLOCKED");
+  assert.equal(result.blocker, "missing_mandatory");
   assert.match(result.reason, /Missing mandatory context: test\/mapped\.test\.mjs/);
 });

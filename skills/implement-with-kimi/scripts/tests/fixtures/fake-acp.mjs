@@ -7,9 +7,26 @@ function send(message) {
 }
 
 const promptDelay = Number(process.env.FAKE_PROMPT_DELAY_MS || 10);
+let pendingReadPrompt = null;
 
 input.on("line", (line) => {
   const message = JSON.parse(line);
+  if (message.id === "read-budget-1" && pendingReadPrompt) {
+    const denied = Boolean(message.error);
+    send({
+      method: "session/update",
+      params: {
+        sessionId: pendingReadPrompt.sessionId,
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: JSON.stringify({ read_denied: denied }) },
+        },
+      },
+    });
+    send({ id: pendingReadPrompt.promptId, result: { stopReason: "end_turn" } });
+    pendingReadPrompt = null;
+    return;
+  }
   if (message.method === "initialize") {
     send({
       id: message.id,
@@ -40,6 +57,19 @@ input.on("line", (line) => {
     return;
   }
   if (message.method === "session/prompt") {
+    if (process.env.FAKE_READ_REQUEST) {
+      pendingReadPrompt = { promptId: message.id, sessionId: message.params.sessionId };
+      send({
+        id: "read-budget-1",
+        method: "fs/read_text_file",
+        params: {
+          path: process.env.FAKE_READ_REQUEST,
+          line: 1,
+          limit: 1,
+        },
+      });
+      return;
+    }
     if (process.env.FAKE_PROMPT_ERROR) {
       const error = JSON.parse(process.env.FAKE_PROMPT_ERROR);
       send({ id: message.id, error });

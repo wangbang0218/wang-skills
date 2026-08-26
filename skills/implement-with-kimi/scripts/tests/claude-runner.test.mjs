@@ -149,7 +149,7 @@ test("Claude evidence failures remain EVIDENCE and do not consume Schema repair"
   assert.equal(finished.usage.total_cost_usd, 0.01);
 });
 
-test("Claude compaction fails closed instead of shrinking the authorized context", async () => {
+test("Claude compaction fails closed instead of shrinking the selected context", async () => {
   const root = await createRepo("iwk-claude-context-");
   const binary = await fakeClaude(root, { structured_output: envelope("run-context", { compacted: true }) });
   await assert.rejects(runClaudeNode({
