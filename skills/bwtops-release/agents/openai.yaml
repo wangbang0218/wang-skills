@@ -1,0 +1,4 @@
+interface:
+  display_name: "BWTOPS 开发环境发布"
+  short_description: "识别 Git 项目与 DEV 目标，校验构建配置并提交发布、跟踪结果和恢复任务"
+  default_prompt: "使用 $bwtops-release 将当前项目发布到 BWTOPS 开发环境；唯一目标自动执行，遇到歧义询问用户，并跟踪到发布结果。"

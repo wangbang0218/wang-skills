@@ -67,6 +67,41 @@ npx skills add wangbang0218/wang-skills \
 
 安装后，可以直接将详情分享链接交给 Agent；也可以同时提供项目 API 列表分享链接与目标路径，例如 `/digit/mdr/collection/v1/create`。同一路径存在多个请求方法时，再提供 GET、POST 等方法进行消歧。
 
+### `bwtops-release`
+
+通过专用浏览器手动登录并复用本机认证会话，识别 Git 项目与分支、选择 DEV 环境和实例、校验构建配置、提交构建发布并跟踪到平台终态。用户说“发布到 BWTOPS 的开发环境”时，唯一候选自动继续，多候选或代码差异时询问。当前自动提交支持 H5-NODEJS 应用的单实例 K8s、无审批 DEV；其他目标可只读准备。
+
+安装：
+
+```bash
+npx skills add wangbang0218/wang-skills --skill bwtops-release -g
+```
+
+需要 Node.js 20+ 和桌面 Google Chrome。安装 Skill 后，将 `<skill-directory>` 替换为实际 Skill 目录，准备本地依赖并登录：
+
+```bash
+npm ci --prefix <skill-directory>
+node <skill-directory>/scripts/auth.mjs
+```
+
+脚本等待用户在新浏览器窗口完成登录（默认 10 分钟），验证成功后自动关闭窗口。日常 Chrome 的登录态不会被复制。后续运行 `node <skill-directory>/scripts/auth.mjs --check` 可无界面检查会话；失效时再次运行登录命令。
+
+完整预检（不提交）：
+
+```bash
+node <skill-directory>/scripts/release.mjs --repo <业务项目目录>
+```
+
+用户授权发布后，Agent 使用预检返回的 `planHash` 和唯一请求 ID 执行 `--execute --plan-hash <哈希> --request-id <ID> --wait 30`；随后用 `--resume <ID> --wait 30` 继续跟踪。遇到多候选时添加选择参数，运行 `--help` 查看选项。`ready` 只表示预检完成，只有 `success` 表示平台构建、发布与启动均成功。
+
+任务回执保存在同一私有状态目录的 `runs/`。网络中断或提交结果不明时不重发，保留锁并恢复只读查询。服务端权限最终在提交时校验；任务冲突检查限于接口返回的近期记录。平台按分支构建，尚不能保证检出期间分支更新时仍使用预检提交。
+
+保留 `prepare.mjs --repo <目录>` 用于仅解析项目、代码和目标，不读取完整构建配置或提交任务。
+
+没有 Chrome 时，可在 Skill 目录执行 `npx playwright install chromium`，并在运行脚本时加 `--browser chromium`。依赖和浏览器均无需全局 npm 安装。
+
+会话默认保存于本机用户状态目录的 `wang-skills/bwtops-release/browser-profile`；可使用 `--state-dir` 指定独立私有目录。该目录含登录凭据，不要放入仓库或共享目录。脚本不会输出 Token，也不会额外保存 Token 文本文件。
+
 ## 本地开发
 
 列出仓库内可被发现的 Skills：
