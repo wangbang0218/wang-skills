@@ -5,7 +5,28 @@ description: 复用专用浏览器登录态，识别 Git 项目和远端分支�
 
 # BWTOPS DEV 发布
 
-将 `<skill-directory>` 解析为本文件所在目录，命令使用绝对路径；`--repo` 必须是用户业务项目目录。依赖要求和安装见仓库根 README。用户要求发布即授权对应 DEV 构建发布；唯一候选自动继续，不再询问一次“确认发布”。若只要求调查、预检或编写 Skill，不把它当作新的发布指令；沿用会话中已明确授权的测试范围。
+将 `<skill-directory>` 解析为本文件所在目录，命令使用绝对路径；`--repo` 必须是用户业务项目目录。用户要求发布即授权对应 DEV 构建发布；唯一候选自动继续，不再询问一次“确认发布”。若只要求调查、预检或编写 Skill，不把它当作新的发布指令；沿用会话中已明确授权的测试范围。
+
+## 运行环境与依赖准备
+
+执行工作流程前，检查 `node --version`、`npm --version` 和 `git --version`。需要 Node.js 20+、npm、Git，以及可打开桌面浏览器的图形环境。若命令缺失或 Node.js 低于 20，说明缺失项并停止；请用户安装或切换环境后重试，不把复制或安装 Skill 文件视为已准备好运行依赖。
+
+首次使用或依赖缺失时，在 Skill 自身目录安装锁文件指定的 Playwright 依赖，无需全局 npm 安装：
+
+```bash
+npm ci --prefix <skill-directory>
+```
+
+默认使用本机 Google Chrome。没有 Chrome 时，在 `<skill-directory>` 目录执行 `npx playwright install chromium`；此后登录、检查、预检、提交和恢复命令均添加 `--browser chromium`。依赖或浏览器安装失败时停止并报告原因。
+
+首次使用时登录，后续可无界面检查会话：
+
+```bash
+node <skill-directory>/scripts/auth.mjs
+node <skill-directory>/scripts/auth.mjs --check
+```
+
+登录命令等待用户在新开的专用浏览器窗口手动登录，默认等待 10 分钟，验证成功后自动关闭窗口；不会复制日常 Chrome 登录态。会话失效时重新运行登录命令。若脚本提示按根 README 安装依赖，直接使用本节命令即可，无需原仓库 README。
 
 ## 工作流程
 

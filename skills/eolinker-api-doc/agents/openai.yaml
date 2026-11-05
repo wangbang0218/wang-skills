@@ -1,4 +1,4 @@
 interface:
-  display_name: "Eolinker API Doc"
-  short_description: "Find and extract Eolinker API docs for AI"
-  default_prompt: "Use $eolinker-api-doc to find an API by path from an Eolinker project share link or extract an API detail share link."
+  display_name: "Eolinker 接口文档提取"
+  short_description: "从 Eolinker 分享链接提取接口的请求方法、参数和响应字段"
+  default_prompt: "请用 $eolinker-api-doc 提取接口详情分享链接中的文档；如果我提供的是项目列表分享链接，请按我给出的完整接口路径查找并提取文档。"
